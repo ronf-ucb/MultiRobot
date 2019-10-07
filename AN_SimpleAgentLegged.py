@@ -25,14 +25,18 @@ class SimpleAgent:
         self.RSignalName = rightName
         self.CycleFreqL = 1
         self.CycleFreqR = 1
-        self.duration = 1000 #maybe how long each action should take
         self.camHandles = [None, None, None] #left, front, right
         self.numCameras = len(self.camHandles)
+        self.proxHandle = None
+        self.dangerWall = False
         self.resolution = None
         self.image = None
         self.pureRed = None #this is a 2D array that specifies that significance of a pixel. Sums reds subtracts greens and blues...looking for most pure red thing
         self.reds = None
         self.hasImage = False
+        self.prevMode = None
+        self.prevTup = None
+        self.duration = 120000
 
     def policy(self):
         #simple policy. If there is the red light in front, keep going forward. Otherwise, look around until there is one
@@ -45,6 +49,7 @@ class SimpleAgent:
             mode = self.forward(mode)
             mode = self.center(mode)
             self.getImage()
+            mode = self.avoidWall(mode)
             #self.displayImage()
         print("GOAL ACHIEVED")
         self.clearSignal()
@@ -67,8 +72,8 @@ class SimpleAgent:
             redCentered, redLoc = self.redCenter()
             if not redCentered:
                 return "center"
-            self.CycleFreqL = 3
-            self.CycleFreqR = 3
+            self.CycleFreqL = 4
+            self.CycleFreqR = 4
             self.sendSignal()
         return mode
 
@@ -84,9 +89,9 @@ class SimpleAgent:
             print(offset)
             if offset >= 0:
                 self.CycleFreqL = 4
-                self.CycleFreqR = 1
+                self.CycleFreqR = 2
             else:
-                self.CycleFreqL = 1
+                self.CycleFreqL = 2
                 self.CycleFreqR = 4
             self.sendSignal()
         return mode
@@ -119,6 +124,21 @@ class SimpleAgent:
         finished = frontPixels.size * FINISH
         return numPixelsRed >= finished
 
+    def checkProximity(self):
+        error, state, point, handle, vector= vrep.simxReadProximitySensor(self.clientID, self.proxHandle,vrep.simx_opmode_buffer)
+        self.dangerWall = (state, point)
+
+    def avoidWall(self, mode):
+        #we need to check this regardless of what mode we are currently in
+        self.checkProximity()
+        if self.dangerWall[0]: #if there is a wall
+            prevTup = (self.CycleFreqL, self.CycleFreqR)
+            for i in range(self.duration):
+                self.CycleFreqL = - prevTup[1]
+                self.CycleFreqR = - prevTup[0]
+                self.sendSignal()
+        return mode
+
     def prepareVision(self):
         rCode1, self.camHandles[1] = vrep.simxGetObjectHandle(self.clientID,'FrontCamera',vrep.simx_opmode_oneshot_wait)
         rCode2, self.camHandles[2] = vrep.simxGetObjectHandle(self.clientID,'RightCamera',vrep.simx_opmode_oneshot_wait)
@@ -130,6 +150,16 @@ class SimpleAgent:
             error, resolution, image = vrep.simxGetVisionSensorImage(self.clientID, handle, 0, vrep.simx_opmode_streaming)
         self.resolution = resolution
         self.image = image
+
+    def prepareProximity(self):
+        rCode, self.proxHandle = vrep.simxGetObjectHandle(self.clientID, 'FrontProxSensor', vrep.simx_opmode_oneshot_wait)
+        if rCode != vrep.simx_return_ok:
+            print("Could not get proximity sensor handle. Exiting.")
+            sys.exit()
+        error, state, point, handle, vector = vrep.simxReadProximitySensor(self.clientID, self.proxHandle, vrep.simx_opmode_streaming)
+        print(state)
+        print(point)
+        self.checkProximity()
 
     def sendSignal(self):
         vrep.simxSetFloatSignal(self.clientID, self.LSignalName, self.CycleFreqL, vrep.simx_opmode_oneshot)
@@ -175,4 +205,5 @@ else:
 agent = SimpleAgent(clientID, LSignalName, RSignalName)
 agent.clearSignal()
 agent.prepareVision()
+agent.prepareProximity()
 agent.policy()
