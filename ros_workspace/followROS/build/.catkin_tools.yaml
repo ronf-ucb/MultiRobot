@@ -1,0 +1,6 @@
+devel_space: /home/vrep/MultiRobot/ros_workspace/followROS/devel
+install: false
+install_space: /home/vrep/MultiRobot/ros_workspace/followROS/install
+profile: default
+source_space: /home/vrep/MultiRobot/ros_workspace/followROS/src
+workspace: /home/vrep/MultiRobot/ros_workspace/followROS

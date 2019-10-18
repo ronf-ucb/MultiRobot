@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/vrep/MultiRobot/ros_workspace/follow2/devel/setup.sh
