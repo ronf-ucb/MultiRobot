@@ -38,7 +38,7 @@ if __name__ == '__main__':
     
     while not rospy.is_shutdown():
         speed = Int16MultiArray(None, [0,0,0,0])
-        if counter < 50:
+        if counter < 10:
             speed.data = [3,-3,-3,3]
             leaderPub.publish(speed)
         else:
