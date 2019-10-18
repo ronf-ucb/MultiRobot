@@ -1,8 +1,0 @@
-prefix=/home/vrep/MultiRobot/ros_workspace/follow2/devel
-
-Name: follower
-Description: Description of follower
-Version: 0.0.0
-Cflags: 
-Libs: -L/home/vrep/MultiRobot/ros_workspace/follow2/devel/lib 
-Requires: 

@@ -1,2 +1,0 @@
-vrep_plugin_skeleton:vrep_ros_interface:vrep_skeleton_msg_and_srv
--DCATKIN_DEVEL_PREFIX=/home/vrep/MultiRobot/ros_workspace/follow2/devel -DCMAKE_INSTALL_PREFIX=/home/vrep/MultiRobot/ros_workspace/follow2/install -G Unix Makefiles
