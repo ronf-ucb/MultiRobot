@@ -6,36 +6,29 @@ from numpy import linalg
 # from follower_pkg.msg import sensor_msg
 
 leaderPub = rospy.Publisher('/vrep_ros_interface/leaderSpeed', Int16MultiArray, queue_size=10)
+followerPub = rospy.Publisher('/vrep_ros_interface/followerSpeed', Int16MultiArray, queue_size=10)
 
 # function called after receiving information from the subscriber 
-# def callback(msg):
-#     middle_imgIntensity = np.sum(msg.middleSensor[0])
-#     right_imgIntensity = np.sum(msg.rightSensor[0])
-#     left_imgIntensity = np.sum(msg.leftSensor[0])
-
-#     followerPub = rospy.Publisher('followerSpeed', Int16MultiArray, queue_size=10)
-#     speed = Int16MultiArray(None, [0,0,0,0])
-#     if right_imgIntensity>left_imgIntensity:
-#         speed.data = [3,-2,-2,3]
-#         followerPub.publish(speed)
-#     elif right_imgIntensity<left_imgIntensity:
-#         speed.data = [2,-3,-3, 2]
-#         followerPub.publish(speed)
-#     else: 
-#         speed.data = [3,-3,-3,3]
-#         followerPub.publish(speed)
+def callback(msg):
+    middle_imgIntensity = np.sum(msg.middleSensor[0])
+    right_imgIntensity = np.sum(msg.rightSensor[0])
+    left_imgIntensity = np.sum(msg.leftSensor[0])
+    
+    speed = Int16MultiArray(None, [0,0,0,0])
+    if right_imgIntensity>left_imgIntensity:
+        speed.data = [3,-2,-2,3]
+        followerPub.publish(speed)
+    elif right_imgIntensity<left_imgIntensity:
+        speed.data = [2,-3,-3, 2]
+        followerPub.publish(speed)
+    else: 
+        speed.data = [3,-3,-3,3]
+        followerPub.publish(speed)
 
 # Subscriber subscribing to a topic wtih a custom message type contianing the sensor readings
-# def subscriber():
-#     rospy.Subscriber("sensorReadings", sensorMsg, callback)
+def subscriber():
+    rospy.Subscriber("sensorReadings", sensorMsg, callback)
 
-#     rospy.spin()
-
-if __name__ == '__main__':
-
-    rospy.init_node('follower', anonymous=True)
-    counter = 0
-    
     while not rospy.is_shutdown():
         speed = Int16MultiArray(None, [0,0,0,0])
         if counter < 10:
@@ -44,12 +37,19 @@ if __name__ == '__main__':
         else:
             speed.data = [3,-2,-2,3]
             leaderPub.publish(speed)
-        # try:
-        #     subscriber()
-        # except rospy.ROSInterruptException: pass
+        
         counter += 1
         rospy.sleep(1)
 
+
+if __name__ == '__main__':
+
+    rospy.init_node('follower', anonymous=True)
+    counter = 0
+    try:
+        subscriber()
+    except rospy.ROSInterruptException: pass
+    
 
 
     # vrep.simxFinish(-1) #clean up the previous stuff
