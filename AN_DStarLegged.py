@@ -8,10 +8,11 @@ import math
 
 LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
-PADDING = 2 #5 degrees of padding. Specifies what range of qualifies as "'going in the desired direction'"
-RESOLUTION = 6
-PENALTY = 50
-DIRECTIONALITY = 3/4
+WALLBACK = 100000
+MINDISTANCE = .02
+MAXDISTANCE = .25
+PADDING = 2 #degrees of padding. Specifies what range of qualifies as "'going in the desired direction'"
+RESOLUTION = 8
 
 class FieldDStarAgent:
     def __init__(self, client, leftName, rightName):
@@ -24,7 +25,7 @@ class FieldDStarAgent:
         self.CycleFreqR = 1
         self.robotHandle = None
         self.robotPosition = None
-        self.vector = None
+        #self.vector = None
 
         #sensing and planning
         self.proxHandle = None
@@ -35,84 +36,104 @@ class FieldDStarAgent:
         self.map = None
         self.keyFactor = 0
         self.open = list()
-        self.obstacle = True
         self.obstacles = set()
 
     def policy(self):
-        #wrapper for general policy
+        ########## WRAPPER FOR GENERAL AGENT POLICY ##################
         while (not self.goalDone()):
             print("############### RECOMPUTING SHORTEST PATH ###################")
             self.computeShortestPath() #update the map
-            #make the robot go to the new point
-            self.showColorGrid()
             print("################### UPDATING START ###########################")
+            self.showColorGrid()
+
+            ########### CONTINUE UNTIL DETECT NEW OBSTACLE ##############
             while(True):
-                #compute the next point to go to
+                ########### CHECK FOR OBSTACLE ##############
                 readings = self.checkProximity()
                 newObstacle = readings[0]
                 location = readings[1]
                 if newObstacle:
                     print("OBSTACLE DETECTED AT ", location)
                     break
-                min = (np.inf, np.inf)
-                minPoint = None
-                print("")
-                for n in self.neighbors(self.robotPosition):
-                    tup = self.key(n)
-                    print(n)
-                    print(tup)
-                    if tup < min:
-                        min = tup
-                        minPoint = n
-                print("")
+
+                ########## CHOOSE OPTIMAL POSITION TO TRAVEL TO #############
+                neighbors = self.neighbors(self.robotPosition)
+                costs = []
+                for n in neighbors:
+                    costs += [self.edge(self.robotPosition, n) + self.map[n[0], n[1], 0]]
+                minimum = min(costs)
+                indices = [i for i,x in enumerate(costs) if x == minimum]
+                candidates = [neighbors[i] for i in indices]
+
+                ######### USE DOT PRODUCT TO PRIORITIZE POINTS IN FRONT OF ROBOT #########
+                if len(candidates) == 1:
+                    minPoint = candidates[0]
+                else:
+                    r, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
+                    angle = angle[2]
+                    v = (math.cos(self.radToDeg(angle)), math.sin(self.radToDeg(angle)))
+                    dots = []
+                    for c in candidates:
+                        v1 = (c[0] - self.robotPosition[0], c[1] - self.robotPosition[1])
+                        dots += [self.dotProduct(v1,v)]
+                    minimum = min(dots)
+                    minPoint = candidates[dots.index(minimum)]
+
+                ####### UPDATE POSITION ########
                 self.updateStart(minPoint)
+
+            ######### DETECTED OBJECT. REMOVE FROM PQ. UPDATE COSTS OF NEIGHBORS ###########
             self.stopRobot()
             obx = location[0]
             oby = location[1]
+            inQueue = [entry for entry in self.open if entry[1] == (obx, oby)]
+            if len(inQueue) > 0:
+                self.open.remove(inQueue[0])
             self.map[obx, oby, 0] = np.inf
             self.map[obx, oby, 1] = np.inf
             neighbors = self.neighbors(location)
             for n in neighbors:
                 if n not in self.obstacles:
                     self.updateState(n)
-            self.showColorGrid()
 
-    def updateStart(self, newPosition): #specifies what direction to go to by position
-        #waits until the robot gets into a new cell. Updates the start location and key factor.
-        #angles are measured relative to the positive x-axis (or in our representation the bottom of our array)
-        rCode = 1
-        print("GOAL POSITION:", newPosition)
-        while (rCode == 1):
-            rCode, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_streaming) #this gets us the angle we want
-        angle = self.radToDeg(angle[2]) #this is the angle we want
+    def updateStart(self, newPosition):
         while(True):
+            ############ GET INITIAL POSITIONS/ANGLES. CHECK IF TOO CLOSE TO OBSTACLE ############
             r, position = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer) #-1 specifies we want the absolute position
             r, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
-            #the angles that v-rep gives range from -180 to 180. This is hard to work with. Convert to 0 to 360
-            angle = self.radToDeg(angle[2])
-            if (angle < 0):
-                angle += 360
-            xVec = newPosition[0] - position[0]
-            yVec = newPosition[1] - position[1]
-            desiredAngle = math.degrees(math.atan(yVec/xVec))
-            if (desiredAngle < 0):
-                desiredAngle += 360
-            if desiredAngle - PADDING < angle and desiredAngle + PADDING > angle:
-                self.CycleFreqL = 2
-                self.CycleFreqR = 2
+            r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer)
+            if r == vrep.simx_return_ok and distance != -1 and distance < MINDISTANCE:
+                print('BACK')
+                self.backRobot()
+                r, position = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
+                break
             else:
-                turnRight = ((360 - desiredAngle) + angle) % 360
-                turnLeft = ((360 - angle) + desiredAngle) % 360
-                if turnRight < turnLeft: #turn right if the work to turn right is less than turning left
+                ########## TRAVEL TO THE NEW POSITION ##############
+                position = self.transform(position) #our coordinate frame
+                angle = self.radToDeg(angle[2]) #the angles that v-rep gives range from -pi to pi radians. This is hard to work with. Convert to 0 to 360 degrees
+                if (angle < 0):
+                    angle += 360
+                xVec = newPosition[0] - position[0]
+                yVec = newPosition[1] - position[1]
+                desiredAngle = math.degrees(math.atan(yVec/xVec)) if xVec != 0 else yVec * 90
+                if (desiredAngle < 0):
+                    desiredAngle += 360
+                if desiredAngle - PADDING < angle and desiredAngle + PADDING > angle:
                     self.CycleFreqL = 3
-                    self.CycleFreqR = 1
-                else: #turn left if the work to turn left is less than turning right
-                    self.CycleFreqL = 1
                     self.CycleFreqR = 3
-            self.sendSignal()
-            position = self.transform(position)
+                else:
+                    turnRight = ((360 - desiredAngle) + angle) % 360
+                    turnLeft = ((360 - angle) + desiredAngle) % 360
+                    if turnRight < turnLeft: #turn right if the work to turn right is less than turning left
+                        self.CycleFreqL = 3
+                        self.CycleFreqR = 1
+                    else: #turn left if the work to turn left is less than turning right
+                        self.CycleFreqL = 1
+                        self.CycleFreqR = 3
+                self.sendSignal()
+
+            ######### BREAK AND UPDATE ROBOTPOSITION IF TRANSITIONED ###########
             if position != self.robotPosition:
-                print("NEW POSITION:", position)
                 self.robotPosition = position
                 difference = self.euclidian(position, self.robotPosition) #the difference in heuristic is this anyway
                 self.keyFactor += difference
@@ -120,42 +141,32 @@ class FieldDStarAgent:
 
 
     def updateState(self, s):
-        #if s not in self.visited:
-        #    self.map[s[0], s[1], 0] = np.inf
+        ######## UPDATE THIS STATE BY CALCULATING NEW RHS VALUE ##########
         if s != self.goalPosition:
             minimum = np.inf
-            #for nPair in self.neighborPairs(s):
-            #    cost = self.computeCost(s, nPair[0], nPair[1])
-            #    if cost < min:
-            #        min = cost
-            flag = 0
+            gPlusEdge = []
             for n in self.neighbors(s):
                 x = n[0]
                 y = n[1]
-                gPlusEdge = min(self.map[n[0], n[1], 0], self.map[n[0], n[1], 1])+ self.euclidian(s, n)
-                if gPlusEdge < minimum:
-                    minimum = gPlusEdge
-                if gPlusEdge == np.inf:
-                    flag = 1
-            self.map[s[0], s[1], 1] = minimum #if flag == 0 else min + PENALTY #update RHS...penalize those that are too close to obstacles
-        if s in self.open:
-            self.open.remove(s)
+                gPlusEdge += [self.map[n[0], n[1], 0] + self.edge(s, n)]
+            minimum = min(gPlusEdge)
+            flag = np.inf in gPlusEdge
+            self.map[s[0], s[1], 1] = minimum
+        inQueue = [entry for entry in self.open if entry[1] == s]
+
+        ######### REMOVE FROM QUEUE IF PRESENT ##########
+        if len(inQueue) > 0:
+            self.open.remove(inQueue[0])
+        ######## ADD BACK IN WITH UPDATED VALUES IF INCONSISTENT ##########
         if self.map[s[0], s[1], 0] != self.map[s[0], s[1], 1]:
             heapq.heappush(self.open, (self.key(s), s))
 
     def computeShortestPath(self):
-        #keeps looping until the current state is locally consistent
         x = self.robotPosition[0]
         y = self.robotPosition[1]
-        #prev = None
-        while (len(self.open) > 0 and ((min(self.open)[0] < self.key(self.robotPosition)) or self.map[x,y,0] != self.map[x,y,1])):
+        ######## PROPAGATE ALL CHANGES TO FIND SHORTEST PATH ############
+        while (len(self.open) > 0): #and ((min(self.open)[0] < self.key(self.robotPosition)) or self.map[x,y,0] != self.map[x,y,1])):
             mini = heapq.heappop(self.open) #the points are already transformed
-            print("BEFORE: ", mini)
-            #if not prev: #only process the same thing
-            #    prev = mini
-            #elif prev == mini:
-            #    continue
-            #prev = mini
             key = mini[0]
             currPoint = mini[1]
             x = currPoint[0]
@@ -163,53 +174,58 @@ class FieldDStarAgent:
             g = self.map[currPoint[0], currPoint[1], 0]
             rhs = self.map[currPoint[0], currPoint[1], 1]
             n = self.neighbors(currPoint)
-            if g>=rhs:
+
+            ######## CHECK FOR CONSISTENCY, UNDERCONSISTENCY, AND OVERCONSISTENCY ##########
+            if g == rhs:
+                continue
+            if g > rhs:
                 self.map[x, y, 0] = rhs
             else:
                 self.map[x,y,0] = np.inf
-                #here you need to update
-                heapq.heappush(self.open, (self.key(currPoint), currPoint))
-                #n = n + [currPoint]
+                n = n + [currPoint] #add this current point to the list, then decide later if we want to push it back onto the heap
             for neighbor in n:
                 if neighbor not in self.obstacles:
                     self.updateState(neighbor)
-            print("AFTER: ", self.map[currPoint[0], currPoint[1], 0], self.map[currPoint[0], currPoint[1], 1])
 
     def goalDone(self):
         return self.robotPosition == self.goalPosition
 
     def checkProximity(self):
-        #method that returns whether there is a NEW obstacle and the location of the new obstacle in the world frame in our array space
+        ###### DETECT NEW OBSTACLE AND ADD TO OUR ARRAY SPACE GRAPH ############
         r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer) #retrieves distance of a detected object from child script
         if r != vrep.simx_return_ok or distance == -1: #if nothing was detected
-            return (False, None)
+            return (False, None, np.inf)
+
+        ##### IF SOMETHING WAS DETECTED ##########
+        self.stopRobot()
         r, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
-        angle = angle[2] #computation is always in radians
         r, currPosition = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
+        angle = angle[2] #computation is always in radians
         xdist = math.cos(angle) * distance
         ydist = math.sin(angle) * distance
         worldx = xdist + currPosition[0]
         worldy = ydist + currPosition[1]
         location = (worldx, worldy)
         location =self.transform(location)
-        if location in self.obstacles: #if we've already recorded this obstacle
-            return (False, None)
+
+        ####### IF IT IS A NEW OBSTACLE, RETURN THE RESULTS #########
+        if location in self.obstacles: 
+            return (False, None, np.inf)
         self.obstacles.add(location)
-        print("")
-        print("NEW OBSTACLE DETECTED")
-        print("")
-        return (True, location)
+        return (True, location, distance)
 
     def prepare(self):
         self.clearSignal()
-        #Prepare the proximity sensor
+
+        ################## PREPARE SENSORS ############################
         rCode, self.proxHandle = vrep.simxGetObjectHandle(self.clientID, 'sensor#1', vrep.simx_opmode_oneshot_wait)
         if rCode != vrep.simx_return_ok:
             print("Could not get proximity sensor handle. Exiting.")
             sys.exit()
         error, state, point, handle, vector = vrep.simxReadProximitySensor(self.clientID, self.proxHandle, vrep.simx_opmode_streaming)
 
-        #get robot and goal positions, map dimensions, create map with certain resolution, and transform coordinates into array coordinates
+
+        ################ GET ROBOT/GOAL POSITIONS, MAP DIM WITH RESOLUTION, TRANSFORM ###########################
         r, self.robotHandle = vrep.simxGetObjectHandle(self.clientID, 'body#1', vrep.simx_opmode_oneshot_wait)
         r, self.goalHandle = vrep.simxGetObjectHandle(self.clientID, 'Goal', vrep.simx_opmode_oneshot_wait)
         r = -1
@@ -218,25 +234,32 @@ class FieldDStarAgent:
         r = -1
         while (r != vrep.simx_return_ok):
             r, self.goalPosition = vrep.simxGetObjectPosition(self.clientID, self.goalHandle, -1, vrep.simx_opmode_streaming)
+        rCode = -1
+        while (rCode == 1):
+            rCode, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_streaming) #just to prepare our vrep
         self.robotPosition = self.transform(self.robotPosition)
         self.goalPosition = self.transform(self.goalPosition)
-        self.mapDimensions = (self.goalPosition[0] - self.robotPosition[0] + 1, self.goalPosition[1] - self.robotPosition[1] + 1, 2) #g, rhs
+        self.mapDimensions = (self.goalPosition[0] - self.robotPosition[0] + 2, self.goalPosition[1] - self.robotPosition[1] + 2, 2) #g, rhs
         self.map = np.zeros(self.mapDimensions)
         vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_streaming) #just to get things started
-        self.vector = (self.goalPosition[0] - self.robotPosition[0], self.goalPosition[1] - self.robotPosition[1])
 
-        #fill state costs of the map with euclidian distances for now...we don't know anything about our environment
+
+        ############### NAIVELY FILL IN G AND RHS VALUES FOR MAP #########################
         for i in range(self.mapDimensions[0]):
             for j in range(self.mapDimensions[1]):
-                cost = self.euclidian(self.goalPosition, (i,j)) #+ DIRECTIONALITY * self.euclidian(self.robotPosition, (i,j))
+                cost = self.euclidian(self.goalPosition, (i,j))
                 self.map[i,j,0] = cost
                 self.map[i,j,1] = cost
-        #initalize our priority queue
+
+
+        ############# INITIALIZE PRIORITY QUEUE ######################
         print("OVERALL GOAL POSITION: ", self.goalPosition)
         heapq.heapify(self.open)
         self.map[self.goalPosition[0], self.goalPosition[1], 1] = 0
         heapq.heappush(self.open, (self.key(self.goalPosition), self.goalPosition))
-        self.showColorGrid()
+
+    def edge(self, point1, point2): #abstraction for edges
+        return self.euclidian(point1, point2) #for now use euclidian distance
 
     def radToDeg(self, rad):
         #points are returned in radians by orientation
@@ -244,8 +267,8 @@ class FieldDStarAgent:
 
     def transform(self, point):
         #find the place in the array a point (in v-rep coordinates) is
-        x = int(point[0] / (1/self.res))
-        y = int(point[1] / (1/self.res))
+        x = int(point[0] * self.res)
+        y = int(point[1] * self.res)
         return (x,y)
 
     def clearSignal(self):
@@ -256,6 +279,15 @@ class FieldDStarAgent:
         self.CycleFreqL = 0
         self.CycleFreqR = 0
         self.sendSignal()
+
+    def backRobot(self):
+        r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer)
+        while distance < MAXDISTANCE and distance != -1: #while it is not far away enough and there is an obstacle in front of him
+            self.CycleFreqL = -2
+            self.CycleFreqR = -2
+            self.sendSignal()
+            r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer)
+        self.stopRobot()
 
     def sendSignal(self):
         vrep.simxSetFloatSignal(self.clientID, self.LSignalName, self.CycleFreqL, vrep.simx_opmode_oneshot)
@@ -271,6 +303,43 @@ class FieldDStarAgent:
                     neighbors += [curr]
         return neighbors
 
+    def key(self, point):
+        x = point[0]
+        y = point[1]
+        cost = min(self.map[x,y,0], self.map[x,y,1])
+        return (cost + self.calcHeuristic(point) + self.keyFactor, cost)
+
+    def calcHeuristic(self, point):
+        #calculates the heuristic of a given point. Heuristic should equal the distance from start plus key factor
+        return (self.euclidian(point, self.robotPosition))
+
+    def euclidian(self, point1, point2):
+        return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1])**2) **(1/2)
+
+
+    def dotProduct(self, v1, v2):
+        #given a point, computes the absolute value of dot product of vector: start to point and vector: start to goal
+        x1 = v1[0]
+        y1 = v1[1]
+        norm1 = (x1**2 + y1**2)**(1/2)
+        x2 = v2[0]
+        y2 = v2[1]
+        norm2 = (x2**2 + y2**2)**(1/2)
+        #must include normalizations
+        return (x1/norm1) * (x2/norm2) + (y1/norm1) * (y2/norm2)
+
+    def showColorGrid(self):
+        plt.title('G values: Black is Current Position')
+        temp = self.map[self.robotPosition[0],self.robotPosition[1], 0]
+        self.map[self.robotPosition[0], self.robotPosition[1], 0] = 0
+        heatmap = plt.pcolor(self.map[:,:,0])
+        self.map[self.robotPosition[0], self.robotPosition[1], 0] = temp
+        plt.show()
+        #plt.title('Rhs values')
+        #another = plt.pcolor(self.map[:,:,1])
+        #plt.show()
+
+    '''UNUSED METHODS'''
     def neighborPairs(self, point):
         #given a specific point on the map, generate a list of the possible neighbor pairs to calculate stuff with
         neighbors = self.neighbors(point)
@@ -285,22 +354,6 @@ class FieldDStarAgent:
         #add in first and last as pair if possible
         return res
 
-    def key(self, point):
-        x = point[0]
-        y = point[1]
-        cost = min(self.map[x,y,0], self.map[x,y,1])
-        return (cost + self.calcHeuristic(point) + self.keyFactor, cost)
-
-    def calcHeuristic(self, point):
-        #calculates the heuristic of a given point. Heuristic should equal the distance from start plus key factor
-        return (self.euclidian(point, self.robotPosition)) + self.keyFactor
-
-    def manhattan(self, point1, point2):
-        return (abs(point1[0] - point2[0]) + abs(point1[1] - point2[1]))
-
-    def euclidian(self, point1, point2):
-        return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1])**2) **(1/2)
-
     def getC(self, point):
         #returns the cost of a cell based on map information. Returns 1 if no map info has been given
         return 1
@@ -309,26 +362,22 @@ class FieldDStarAgent:
         #returns the cost of bottom of cell. Returns 1 if no map info has been given
         return 1
 
-    def dotProduct(self, point):
-        #given a point, computes the absolute value of dot product of vector: start to point and vector: start to goal
-        x1 = self.vector[0]
-        y1 = self.vector[1]
-        norm1 = (x1**2 + y1**2)**(1/2)
-        x2 = point[0] - self.goalPosition[0]
-        y2 = point[1] - self.goalPosition[1]
-        norm2 = (x2**2 + y2**2)**(1/2)
-        #must include normalizations
-        if norm1 == 0 or norm2 == 0:
-            return 1
-        return (x1/norm1) * (x2/norm2) + (y1/norm1) * (y2/norm2)
+    def adjacent(self, point):
+        #returns a list of adjacent points for obstacle buffering
+        adjacents = [(point[0] + 1, point[1]), (point[0], point[1] + 1), (point[0] - 1, point[1]), (point[0], point[1] - 1)]
+        adjacents = [curr for curr in adjacents if curr[0] >= 0 and curr[1] >= 0 and curr[0] < self.mapDimensions[0] and curr[1]<self.mapDimensions[1]]
+        return adjacents
 
-    def showColorGrid(self):
-        plt.title('G values')
-        heatmap = plt.pcolor(self.map[:,:,0])
-        plt.show()
-        plt.title('Rhs values')
-        another = plt.pcolor(self.map[:,:,1])
-        plt.show()
+    def manhattan(self, point1, point2):
+        return (abs(point1[0] - point2[0]) + abs(point1[1] - point2[1]))
+
+    def inverseTransform(self, point):
+        x = point[0] / self.res
+        y = point[1] / self.res
+        return (x,y)
+
+    def degToRad(self, deg):
+        return (deg/180) * math.pi
 
 vrep.simxFinish(-1) #clean up the previous stuff
 clientID = vrep.simxStart('127.0.0.1', 19999, True, True, 5000, 5)
