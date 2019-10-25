@@ -44,7 +44,6 @@ class FieldDStarAgent:
             print("############### RECOMPUTING SHORTEST PATH ###################")
             self.computeShortestPath() #update the map
             print("################### UPDATING START ###########################")
-            self.showColorGrid()
 
             ########### CONTINUE UNTIL DETECT NEW OBSTACLE ##############
             while(True):
@@ -97,6 +96,8 @@ class FieldDStarAgent:
                     self.updateState(n)
 
     def updateStart(self, newPosition):
+        print("CurrPosition: ", self.robotPosition)
+        print("NewPosition:", newPosition)
         while(True):
             ############ GET INITIAL POSITIONS/ANGLES. CHECK IF TOO CLOSE TO OBSTACLE ############
             r, position = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer) #-1 specifies we want the absolute position
@@ -121,15 +122,18 @@ class FieldDStarAgent:
                 if desiredAngle - PADDING < angle and desiredAngle + PADDING > angle:
                     self.CycleFreqL = 3
                     self.CycleFreqR = 3
+                    print("STRAIGHT")
                 else:
                     turnRight = ((360 - desiredAngle) + angle) % 360
                     turnLeft = ((360 - angle) + desiredAngle) % 360
                     if turnRight < turnLeft: #turn right if the work to turn right is less than turning left
                         self.CycleFreqL = 3
                         self.CycleFreqR = 1
+                        print('RIGHT')
                     else: #turn left if the work to turn left is less than turning right
                         self.CycleFreqL = 1
                         self.CycleFreqR = 3
+                        print('LEFT')
                 self.sendSignal()
 
             ######### BREAK AND UPDATE ROBOTPOSITION IF TRANSITIONED ###########
@@ -193,9 +197,8 @@ class FieldDStarAgent:
     def checkProximity(self):
         ###### DETECT NEW OBSTACLE AND ADD TO OUR ARRAY SPACE GRAPH ############
         r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer) #retrieves distance of a detected object from child script
-        if r != vrep.simx_return_ok or distance == -1: #if nothing was detected
+        if r != vrep.simx_return_ok or distance == -1 or r == 1: #if nothing was detected
             return (False, None, np.inf)
-
         ##### IF SOMETHING WAS DETECTED ##########
         self.stopRobot()
         r, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
@@ -209,7 +212,7 @@ class FieldDStarAgent:
         location =self.transform(location)
 
         ####### IF IT IS A NEW OBSTACLE, RETURN THE RESULTS #########
-        if location in self.obstacles: 
+        if location in self.obstacles:
             return (False, None, np.inf)
         self.obstacles.add(location)
         return (True, location, distance)
@@ -235,7 +238,7 @@ class FieldDStarAgent:
         while (r != vrep.simx_return_ok):
             r, self.goalPosition = vrep.simxGetObjectPosition(self.clientID, self.goalHandle, -1, vrep.simx_opmode_streaming)
         rCode = -1
-        while (rCode == 1):
+        while (rCode != vrep.simx_return_ok):
             rCode, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_streaming) #just to prepare our vrep
         self.robotPosition = self.transform(self.robotPosition)
         self.goalPosition = self.transform(self.goalPosition)
@@ -290,8 +293,8 @@ class FieldDStarAgent:
         self.stopRobot()
 
     def sendSignal(self):
-        vrep.simxSetFloatSignal(self.clientID, self.LSignalName, self.CycleFreqL, vrep.simx_opmode_oneshot)
-        vrep.simxSetFloatSignal(self.clientID, self.RSignalName, self.CycleFreqR, vrep.simx_opmode_oneshot)
+        r = vrep.simxSetFloatSignal(self.clientID, self.LSignalName, self.CycleFreqL, vrep.simx_opmode_oneshot)
+        r = vrep.simxSetFloatSignal(self.clientID, self.RSignalName, self.CycleFreqR, vrep.simx_opmode_oneshot)
 
     def neighbors(self, point):
         #returns all the neighbors in array coordinates of a given point
