@@ -1,19 +1,21 @@
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Float32MultiArray
 import numpy as np
 from numpy import linalg
 # from follower_pkg.msg import sensor_msg
 
 leaderPub = rospy.Publisher('/vrep_ros_interface/leaderSpeed', Int16MultiArray, queue_size=10)
 followerPub = rospy.Publisher('/vrep_ros_interface/followerSpeed', Int16MultiArray, queue_size=10)
+counter = 0
 
 # function called after receiving information from the subscriber 
 def callback(msg):
-    middle_imgIntensity = np.sum(msg.middleSensor[0])
-    right_imgIntensity = np.sum(msg.rightSensor[0])
-    left_imgIntensity = np.sum(msg.leftSensor[0])
-    
+    middle_imgIntensity = msg.data[0]
+    left_imgIntensity = msg.data[1]
+    right_imgIntensity = msg.data[2]
+
     speed = Int16MultiArray(None, [0,0,0,0])
     if right_imgIntensity>left_imgIntensity:
         speed.data = [3,-2,-2,3]
@@ -27,8 +29,8 @@ def callback(msg):
 
 # Subscriber subscribing to a topic wtih a custom message type contianing the sensor readings
 def subscriber():
-    rospy.Subscriber("sensorReadings", sensorMsg, callback)
-
+    rospy.Subscriber("/vrep_ros_interface/sensor", Float32MultiArray, callback)
+    counter = 0
     while not rospy.is_shutdown():
         speed = Int16MultiArray(None, [0,0,0,0])
         if counter < 10:
@@ -45,7 +47,7 @@ def subscriber():
 if __name__ == '__main__':
 
     rospy.init_node('follower', anonymous=True)
-    counter = 0
+    
     try:
         subscriber()
     except rospy.ROSInterruptException: pass
