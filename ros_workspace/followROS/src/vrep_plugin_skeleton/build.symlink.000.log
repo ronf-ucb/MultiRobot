@@ -1,0 +1,4 @@
+Symlinking /home/vrep/ros_workspaces/bub/devel/lib/libv_repExtRosSkeleton.so
+Symlinking /home/vrep/ros_workspaces/bub/devel/lib/pkgconfig/vrep_plugin_skeleton.pc
+Symlinking /home/vrep/ros_workspaces/bub/devel/share/vrep_plugin_skeleton/cmake/vrep_plugin_skeletonConfig-version.cmake
+Symlinking /home/vrep/ros_workspaces/bub/devel/share/vrep_plugin_skeleton/cmake/vrep_plugin_skeletonConfig.cmake

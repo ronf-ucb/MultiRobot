@@ -1,0 +1,34 @@
+[  0%] Built target std_msgs_generate_messages_eus
+[  0%] Built target vrep_skeleton_msg_and_srv_generate_messages_py
+[  0%] Built target rosgraph_msgs_generate_messages_eus
+[  0%] Built target roscpp_generate_messages_py
+[  0%] Built target std_msgs_generate_messages_nodejs
+[  0%] Built target vrep_skeleton_msg_and_srv_generate_messages_eus
+[  0%] Built target vrep_skeleton_msg_and_srv_generate_messages_nodejs
+[  0%] Built target roscpp_generate_messages_cpp
+[  0%] Built target vrep_skeleton_msg_and_srv_generate_messages_cpp
+[  0%] Built target rosgraph_msgs_generate_messages_cpp
+[  0%] Built target std_msgs_generate_messages_cpp
+[  0%] Built target roscpp_generate_messages_eus
+[  0%] Built target std_msgs_generate_messages_lisp
+[  0%] Built target vrep_skeleton_msg_and_srv_generate_messages_lisp
+[  0%] Built target rosgraph_msgs_generate_messages_nodejs
+[  0%] Built target roscpp_generate_messages_nodejs
+[  0%] Built target rosgraph_msgs_generate_messages_lisp
+[  0%] Built target std_msgs_generate_messages_py
+[  0%] Built target rosgraph_msgs_generate_messages_py
+[  0%] Built target roscpp_generate_messages_lisp
+[ 25%] [32m[1mLinking CXX shared library /home/vrep/ros_workspaces/bub/devel/.private/vrep_plugin_skeleton/lib/libv_repExtRosSkeleton.so[0m
+/usr/bin/ld: cannot find -lroslib
+/usr/bin/ld: cannot find -lrosconsole
+/usr/bin/ld: cannot find -lrostime
+/usr/bin/ld: cannot find -lrospack
+/usr/bin/ld: cannot find -lroscpp_serialization
+/usr/bin/ld: cannot find -lroscpp
+collect2: error: ld returned 1 exit status
+CMakeFiles/v_repExtRosSkeleton.dir/build.make:165: recipe for target '/home/vrep/ros_workspaces/bub/devel/.private/vrep_plugin_skeleton/lib/libv_repExtRosSkeleton.so' failed
+make[2]: *** [/home/vrep/ros_workspaces/bub/devel/.private/vrep_plugin_skeleton/lib/libv_repExtRosSkeleton.so] Error 1
+CMakeFiles/Makefile2:86: recipe for target 'CMakeFiles/v_repExtRosSkeleton.dir/all' failed
+make[1]: *** [CMakeFiles/v_repExtRosSkeleton.dir/all] Error 2
+Makefile:140: recipe for target 'all' failed
+make: *** [all] Error 2

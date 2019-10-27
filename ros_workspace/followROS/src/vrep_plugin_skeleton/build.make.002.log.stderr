@@ -1,0 +1,10 @@
+/usr/bin/ld: cannot find -lroslib
+/usr/bin/ld: cannot find -lrosconsole
+/usr/bin/ld: cannot find -lrostime
+/usr/bin/ld: cannot find -lrospack
+/usr/bin/ld: cannot find -lroscpp_serialization
+/usr/bin/ld: cannot find -lroscpp
+collect2: error: ld returned 1 exit status
+make[2]: *** [/home/vrep/ros_workspaces/bub/devel/.private/vrep_plugin_skeleton/lib/libv_repExtRosSkeleton.so] Error 1
+make[1]: *** [CMakeFiles/v_repExtRosSkeleton.dir/all] Error 2
+make: *** [all] Error 2
