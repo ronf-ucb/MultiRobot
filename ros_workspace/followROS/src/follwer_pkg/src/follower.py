@@ -36,19 +36,27 @@ def subscriber():
         if counter < 10:
             speed.data = [3,-3,-3,3]
             leaderPub.publish(speed)
+        elif counter < 30:
+            speed.data = [2,-3,-3,2]
+            leaderPub.publish(speed)
         else:
             speed.data = [3,-2,-2,3]
             leaderPub.publish(speed)
         
         counter += 1
         rospy.sleep(1)
+        print(counter)
+        
 
 
 if __name__ == '__main__':
 
     rospy.init_node('follower', anonymous=True)
+    speed = Int16MultiArray(None, [0,0,0,0])
+    speed.data = [3,-3,-3,3]
     
     try:
+        leaderPub.publish(speed)
         subscriber()
     except rospy.ROSInterruptException: pass
     
