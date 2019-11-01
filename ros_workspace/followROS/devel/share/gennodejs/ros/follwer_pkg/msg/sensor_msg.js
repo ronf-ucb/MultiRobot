@@ -1,0 +1,1 @@
+/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/follwer_pkg/share/gennodejs/ros/follwer_pkg/msg/sensor_msg.js

@@ -1,0 +1,8 @@
+prefix=/home/vrep/MultiRobot/ros_workspace/followROS/install
+
+Name: follwer_pkg
+Description: Description of follwer_pkg
+Version: 0.0.0
+Cflags: -I/home/vrep/MultiRobot/ros_workspace/followROS/install/include
+Libs: -L/home/vrep/MultiRobot/ros_workspace/followROS/install/lib 
+Requires: geometry_msgs roscpp rospy std_msgs message_runtime

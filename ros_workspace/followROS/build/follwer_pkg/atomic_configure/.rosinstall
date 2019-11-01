@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/follwer_pkg/setup.sh

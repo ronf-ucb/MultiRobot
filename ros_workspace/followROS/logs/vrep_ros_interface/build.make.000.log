@@ -1,0 +1,81 @@
+[35m[1mScanning dependencies of target generate_ros_code[0m
+[  4%] [34m[1mGenerating generated/pub.cpp[0m
+[  9%] [34m[1mGenerating generated/ros_msg_io.cpp[0m
+[ 14%] [34m[1mGenerating generated/adv.cpp[0m
+[ 19%] [34m[1mGenerating generated/ros_msg_io.h[0m
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/SensorLevels
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/SensorLevels
+WARNING: bad msg: driver_base/SensorLevels
+WARNING: bad msg: driver_base/SensorLevels
+[ 23%] [34m[1mGenerating generated/ros_srv_io.cpp[0m
+[ 28%] [34m[1mGenerating generated/ros_srv_io.h[0m
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/SensorLevels
+[ 33%] [34m[1mGenerating generated/srvcall.cpp[0m
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/SensorLevels
+[ 38%] [34m[1mGenerating generated/srvcli.cpp[0m
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+[ 42%] [34m[1mGenerating generated/srvsrv.cpp[0m
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+[ 47%] [34m[1mGenerating generated/sub.cpp[0m
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: Package name "lightFollower" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+WARNING: bad msg: driver_base/ConfigString
+WARNING: bad msg: driver_base/ConfigValue
+WARNING: bad msg: driver_base/SensorLevels
+[ 47%] Built target generate_ros_code
+[ 52%] [34m[1mGenerating generated/stubs.cpp, generated/stubs.h, generated/lua_calltips.cpp[0m
+/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/generate.py --xml-file /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/meta/callbacks.xml --lua-file /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/simExtRosInterface.lua --gen-all /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/external/pycpp/pycpp.py -p xml_file=/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/meta/callbacks.xml -i /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/cpp/stubs.cpp -o /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/stubs.cpp -P /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/external/pycpp/pycpp.py -p xml_file=/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/meta/callbacks.xml -i /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/cpp/stubs.h -o /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/stubs.h -P /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/lua_to_xml.py /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/simExtRosInterface.lua /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/lua.xml
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/merge_xml.py /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/meta/callbacks.xml /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/lua.xml /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/reference.xml
+xsltproc -o /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/reference.html /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/xsl/reference.xsl /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/reference.xml
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/generate_lua_calltips.py RosInterface ROS /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/simExtRosInterface.lua /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/lua_calltips.cpp
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/generate_notepadplusplus_xml.py /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/reference.xml /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/np++.xml
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/generate_notepadplusplus_txt.py /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/reference.xml /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/np++.txt
+python /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repStubsGen/generate_deprecated_txt.py /home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/meta/callbacks.xml /home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/deprecated_mapping.txt
+[35m[1mScanning dependencies of target v_repExtRosInterface[0m
+[ 66%] [32mBuilding CXX object CMakeFiles/v_repExtRosInterface.dir/external/v_repPlusPlus/Plugin.cpp.o[0m
+[ 66%] [32mBuilding CXX object CMakeFiles/v_repExtRosInterface.dir/generated/stubs.cpp.o[0m
+[ 66%] [32mBuilding CXX object CMakeFiles/v_repExtRosInterface.dir/src/vrep_ros_interface.cpp.o[0m
+[ 71%] [32mBuilding CXX object CMakeFiles/v_repExtRosInterface.dir/src/ros_msg_builtin_io.cpp.o[0m
+[ 76%] [32mBuilding CXX object CMakeFiles/v_repExtRosInterface.dir/home/vrep/V-REP_PRO_EDU_V3_6_2_Ubuntu18_04/programming/common/v_repLib.cpp.o[0m
+[ 80%] [32mBuilding CXX object CMakeFiles/v_repExtRosInterface.dir/generated/ros_msg_io.cpp.o[0m
+In file included from [01m[K/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/include/vrep_ros_interface.h:76:0[m[K,
+                 from [01m[K/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/src/vrep_ros_interface.cpp:1[m[K:
+[01m[K/home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/ros_msg_io.h:92:10:[m[K [01;31m[Kfatal error: [m[KlightFollower/sensorMsg.h: No such file or directory
+ #include [01;31m[K<lightFollower/sensorMsg.h>[m[K
+          [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+compilation terminated.
+CMakeFiles/v_repExtRosInterface.dir/build.make:84: recipe for target 'CMakeFiles/v_repExtRosInterface.dir/src/vrep_ros_interface.cpp.o' failed
+make[2]: *** [CMakeFiles/v_repExtRosInterface.dir/src/vrep_ros_interface.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+In file included from [01m[K/home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/ros_msg_io.cpp:1:0[m[K:
+[01m[K/home/vrep/MultiRobot/ros_workspace/followROS/build/vrep_ros_interface/generated/ros_msg_io.h:92:10:[m[K [01;31m[Kfatal error: [m[KlightFollower/sensorMsg.h: No such file or directory
+ #include [01;31m[K<lightFollower/sensorMsg.h>[m[K
+          [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+compilation terminated.
+CMakeFiles/v_repExtRosInterface.dir/build.make:204: recipe for target 'CMakeFiles/v_repExtRosInterface.dir/generated/ros_msg_io.cpp.o' failed
+make[2]: *** [CMakeFiles/v_repExtRosInterface.dir/generated/ros_msg_io.cpp.o] Error 1
+CMakeFiles/Makefile2:2883: recipe for target 'CMakeFiles/v_repExtRosInterface.dir/all' failed
+make[1]: *** [CMakeFiles/v_repExtRosInterface.dir/all] Error 2
+Makefile:140: recipe for target 'all' failed
+make: *** [all] Error 2

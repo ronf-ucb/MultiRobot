@@ -1,0 +1,1 @@
+/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/follwer_pkg/share/follwer_pkg/cmake/follwer_pkg-msg-paths.cmake
