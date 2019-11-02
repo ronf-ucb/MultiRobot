@@ -20,8 +20,8 @@ import time
 LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
 # BaseFreq = -3
-# BaseFreq = -0.5
 BaseFreq = -2
+coef = 1
 
 class Pursuit:
     def __init__(self, leftName, rightname):
@@ -31,10 +31,10 @@ class Pursuit:
         self.pos1 = Point32()
         self.pos2 = Point32()
         # prepare the sub and pub
-        self.sub_r_pos = rospy.Subscriber("/cockroachPos", Point32, self.getPos, queue_size=1)
-        self.sub_path = rospy.Subscriber("/cockroachPath", Vector3, self.getPath, queue_size=1)
-        self.pub_vel = rospy.Publisher("/cockroachVel", Vector3, queue_size = 1)
-        self.pub_pathNum = rospy.Publisher("/pathNum", Vector3, queue_size = 1)
+        self.sub_r_pos = rospy.Subscriber("/cockroachPos_2", Point32, self.getPos, queue_size=1)
+        self.sub_path = rospy.Subscriber("/cockroachPath_2", Vector3, self.getPath, queue_size=1)
+        self.pub_vel = rospy.Publisher("/cockroachVel_2", Vector3, queue_size = 1)
+        self.pub_pathNum = rospy.Publisher("/pathNum_2", Vector3, queue_size = 1)
 
 
         self.LSignalName = leftName
@@ -57,13 +57,16 @@ class Pursuit:
         self.path = Vector3()      # destination points
 
         # self.kp = 0.3
-        self.kp = 0.9
+        self.kp = 2
         # self.kd = -0.3
-        self.kd = -0.0
+        self.kd = 2
+        self.ki = 0.01
+
 
         self.eta = None
 
-        self.radiu = 0.15      # the dist from destination point that robot stop
+        self.radiu = 0.05      # the dist from destination point that robot stop
+        self.radiu = 0.10      # the dist from destination point that robot stop
         self.flag = False   # check if robot reach the destination point
 
         # for test :: to get the handle
@@ -101,6 +104,9 @@ class Pursuit:
         vector_x = np.cos(self.ori) * (pose.x - self.pos.x) + np.sin(self.ori) * (pose.y - self.pos.y)
         vector_y = -np.sin(self.ori) * (pose.x - self.pos.x) + np.cos(self.ori) * (pose.y - self.pos.y)
         eta = math.atan2(vector_y, vector_x)
+        # vector_x = (pose.x - self.pos.x)
+        # vector_y = (pose.y - self.pos.y)
+        # eta =math.atan(math.tan(math.atan2(vector_y, vector_x) - self.ori))
         return eta
 
     def if_goal_reached(self, pose):
@@ -111,6 +117,7 @@ class Pursuit:
         dx = self.pos.x - pose.x
         dy = self.pos.y - pose.y
         dist = math.sqrt(dx ** 2 + dy ** 2)
+        self.total_theta = 0
         return dist < self.radiu
 
     def controller(self):
@@ -125,14 +132,14 @@ class Pursuit:
         
 
         if not self.if_goal_reached(self.path):
-            self.LCycleFreq = BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd)
-            self.RCycleFreq = BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd)
+            self.LCycleFreq = (BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef
+            self.RCycleFreq = (BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef
         
-            print("goal_num : ", self.path_num)
-            print("Error : ", theta)
-            print("goal : ", self.path)
-            print("self.L_vel : ", self.LCycleFreq)
-            print("self.R_vel : ", self.RCycleFreq)
+            # print("goal_num : ", self.path_num)
+            # print("Error : ", theta)
+            # print("goal : ", self.path)
+            # print("self.L_vel : ", self.LCycleFreq)
+            # print("self.R_vel : ", self.RCycleFreq)
         else:
             print("goal reached !!")
             self.LCycleFreq = 0
@@ -143,6 +150,7 @@ class Pursuit:
                 self.path_num += 1
 
         self.last_theta = theta
+        self.total_theta += theta
 
         vel = Vector3()
         vel.x = self.LCycleFreq
@@ -156,6 +164,6 @@ class Pursuit:
 
 
 if __name__=="__main__":
-    rospy.init_node("cockroachRun_1")
+    rospy.init_node("cockroachRun_2")
     Pursuit(LSignalName, RSignalName)
     rospy.spin()

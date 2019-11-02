@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+
+<launch>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_first.py" name="pursuit_robot_1"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_second.py" name="pursuit_robot_2"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_third.py" name="pursuit_robot_3"/>
+</launch>
