@@ -122,7 +122,7 @@ class Environment:
             d = self.euclidian(point1, point2)
             if high2:
                 print("WARNING: Next step has cliff hazard!")
-                return d + 5
+                return d + 10
             return d
 
         def radToDeg(self, rad):
