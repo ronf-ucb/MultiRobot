@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 import rospy
-from std_msgs.msg import String, Header
+from std_msgs.msg import String, Header, Int16
 import numpy as np
 
 from scipy import signal, stats
 import matplotlib.pyplot as plt
 import math
-from geometry_msgs.msg import Polygon, Point32, Vector3
+from geometry_msgs.msg import Polygon, Point32, Vector3, Pose
 from nav_msgs.msg import Odometry
 
 
@@ -23,6 +23,9 @@ RSignalName = "CycleRight"
 BaseFreq = -2
 coef = 1
 
+state = 0
+obj = None
+
 class Pursuit:
     def __init__(self, leftName, rightname):
 
@@ -35,6 +38,8 @@ class Pursuit:
         self.sub_path = rospy.Subscriber("/cockroachPath", Vector3, self.getPath, queue_size=1)
         self.pub_vel = rospy.Publisher("/cockroachVel", Vector3, queue_size = 1)
         self.pub_pathNum = rospy.Publisher("/pathNum", Vector3, queue_size = 1)
+
+        self.pub_state = rospy.Publisher("/cockroach_state_actual", Pose, queue_size = 1)
 
 
         self.LSignalName = leftName
@@ -82,8 +87,13 @@ class Pursuit:
         self.pos = msg
         self.ori = msg.z
         
-
         self.controller()
+
+        # state_curr = Pose()
+        # state_curr.position.x = state
+        # self.pub_state.publish(state_curr)
+        # time.sleep(1)
+        # self.controller()
 
     def getPath(self, msg):
         """
@@ -163,7 +173,38 @@ class Pursuit:
         self.pub_vel.publish(vel)
 
 
+# for dynamically allocate
+class state_prepare:
+    def __init__(self):
+        self.sub_state = rospy.Subscriber("/cockroach_state", Pose, self.getState, queue_size=1)
+        self.pub_state = rospy.Publisher("/cockroach_state_actual", Pose, queue_size = 1)
+
+
+    def getState(self, msg):
+        global state
+        global obj
+        state = msg.position.x
+        print(state)
+        if state:
+            obj = Pursuit(LSignalName, RSignalName)
+        else:
+            print("no move")
+
+
+
 if __name__=="__main__":
     rospy.init_node("cockroachRun_1")
-    Pursuit(LSignalName, RSignalName)
+    
+    # pub_state_init = rospy.Publisher("/cockroach_state_actual", Pose, queue_size = 1)
+    # state_init = Pose()
+    # state_init.position.x = state
+    # state_init.position.y = 0
+    # state_init.position.z = 0
+    # state_init.orientation.x = 0
+    # state_init.orientation.y = 0
+    # state_init.orientation.z = 0
+    # pub_state_init.publish(state_init)
+    
+    sp = state_prepare()
+    # Pursuit(LSignalName, RSignalName)
     rospy.spin()

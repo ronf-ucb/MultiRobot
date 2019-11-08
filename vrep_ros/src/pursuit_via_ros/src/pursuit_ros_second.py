@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 import rospy
-from std_msgs.msg import String, Header
+from std_msgs.msg import String, Header, Int16
 import numpy as np
 
 from scipy import signal, stats
 import matplotlib.pyplot as plt
 import math
-from geometry_msgs.msg import Polygon, Point32, Vector3
+from geometry_msgs.msg import Polygon, Point32, Vector3, Pose
 from nav_msgs.msg import Odometry
 
 
@@ -22,6 +22,9 @@ RSignalName = "CycleRight"
 # BaseFreq = -3
 BaseFreq = -2
 coef = 1
+
+state = 0
+obj = None
 
 class Pursuit:
     def __init__(self, leftName, rightname):
@@ -163,7 +166,24 @@ class Pursuit:
         self.pub_vel.publish(vel)
 
 
+# for dynamically allocate
+class state_prepare:
+    def __init__(self):
+        self.sub_state = rospy.Subscriber("/cockroach_state", Pose, self.getState, queue_size=1)
+
+    def getState(self, msg):
+        global state
+        global obj
+        state = msg.orientation.x
+        print(state)
+        if state:
+            obj = Pursuit(LSignalName, RSignalName)
+        else:
+            print("no move")
+
+
 if __name__=="__main__":
     rospy.init_node("cockroachRun_2")
-    Pursuit(LSignalName, RSignalName)
+    state_prepare()
+    # Pursuit(LSignalName, RSignalName)
     rospy.spin()

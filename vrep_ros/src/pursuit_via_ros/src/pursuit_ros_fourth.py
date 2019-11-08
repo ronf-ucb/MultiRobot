@@ -34,10 +34,10 @@ class Pursuit:
         self.pos1 = Point32()
         self.pos2 = Point32()
         # prepare the sub and pub
-        self.sub_r_pos = rospy.Subscriber("/cockroachPos_3", Point32, self.getPos, queue_size=1)
-        self.sub_path = rospy.Subscriber("/cockroachPath_3", Vector3, self.getPath, queue_size=1)
-        self.pub_vel = rospy.Publisher("/cockroachVel_3", Vector3, queue_size = 1)
-        self.pub_pathNum = rospy.Publisher("/pathNum_3", Vector3, queue_size = 1)
+        self.sub_r_pos = rospy.Subscriber("/cockroachPos_4", Point32, self.getPos, queue_size=1)
+        self.sub_path = rospy.Subscriber("/cockroachPath_4", Vector3, self.getPath, queue_size=1)
+        self.pub_vel = rospy.Publisher("/cockroachVel_4", Vector3, queue_size = 1)
+        self.pub_pathNum = rospy.Publisher("/pathNum_4", Vector3, queue_size = 1)
 
 
         self.LSignalName = leftName
@@ -174,7 +174,7 @@ class state_prepare:
     def getState(self, msg):
         global state
         global obj
-        state = msg.position.y
+        state = msg.orientation.y
         print(state)
         if state:
             obj = Pursuit(LSignalName, RSignalName)
@@ -183,7 +183,7 @@ class state_prepare:
 
 
 if __name__=="__main__":
-    rospy.init_node("cockroachRun_3")
+    rospy.init_node("cockroachRun_4")
     state_prepare()
     # Pursuit(LSignalName, RSignalName)
     rospy.spin()
