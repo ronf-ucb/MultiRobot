@@ -1,7 +1,11 @@
 <?xml version="1.0"?>
 
 <launch>
-    <node pkg="pursuit_via_ros" type="pursuit_ros_first.py" name="pursuit_robot_1"/>
-    <node pkg="pursuit_via_ros" type="pursuit_ros_second.py" name="pursuit_robot_2"/>
-    <node pkg="pursuit_via_ros" type="pursuit_ros_third.py" name="pursuit_robot_3"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_first.py" name="tracking_robot_1" output="screen"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_second.py" name="following_robot_1"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_third.py" name="tracking_robot_2"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_fourth.py" name="following_robot_2"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_fifth.py" name="tracking_robot_3"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_sixth.py" name="following_robot_3"/>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_overall.py" name="overall_controller" output="screen"/>
 </launch>
