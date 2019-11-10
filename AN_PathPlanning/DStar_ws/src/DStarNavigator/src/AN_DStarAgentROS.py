@@ -1,5 +1,9 @@
-import vrep
+#! /usr/bin/env python
+
 import numpy as np
+import rospy
+from std_msgs.msg import Float32MultiArray, Float32
+from DStarNavigator.msg import all_parameters
 import matplotlib.pyplot as plt
 import sys
 import heapq
@@ -22,22 +26,28 @@ MINDISTANCE = .02
 MAXDISTANCE = .25
 PADDING = 1 #degrees of padding. Specifies what range of qualifies as "'going in the desired direction'"
 RESOLUTION = 8
-MAPDIMENSIONS = (100, 100 ,4) #g, rhs, slopes, elevation
+MAPDIMENSIONS = (100, 100 ,2) #g, rhs, slopes, elevation (slopes and elevation not included)
 CLIFFTHRESHOLD = .01 #height of a cliff to be considered dangerous
 
-class DStarAgent:
-    def __init__(self, client):
-        self.clientID = client
-        self.robotHandle = None
-        self.proxHandles = [] #[0] front-facing proximity sensor
-        self.goalHandle = None
+class DStarAgent(object):
+    def __init__(self):
+        #ROS
+        rospy.Subscriber("/robPos", Float32MultiArray, self.rosRobPos, queue_size = 1)
+        rospy.Subscriber("/goalPos", Float32MultiArray, self.rosGoalPos, queue_size = 1)
+        rospy.Subscriber("/robOrient", Float32MultiArray, self.rosRobOrient, queue_size = 1)
+        rospy.Subscriber("/proxDist", Float32, self.rosProxDist, queue_size = 1)
+        rospy.Subscriber("/proxVec", Float32MultiArray, self.rosProxVec, queue_size = 1)
+        rospy.Subscriber("/3DSense", Float32MultiArray, self.ros3DSensor, queue_size = 1)
+        '''TODO: insert three dimensional data passing here'''
+
         self.keyFactor = 0
         self.open = list()
         self.env = Environment(RESOLUTION, MAPDIMENSIONS, CLIFFTHRESHOLD)
         self.currHeight = 0
-        self.theta = None #this represents the angle of depression of our ground proximity sensor
-        self.z = None #this represents the height of the ground proximity sensor
-        self.noCliff = None #this represents the maximum value for a distance to not be considered a cliff
+        self.orientation = None
+        self.distance = None 
+        self.proxVec = None 
+        self.data3D = None 
 
     def policy(self):
         ########## WRAPPER FOR GENERAL AGENT POLICY ##################
@@ -68,14 +78,12 @@ class DStarAgent:
                 neighbors = self.env.neighbors(pos)
                 costs = []
                 dots = []
-                #CHANGE
-                r,angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
-                robotPosition = self.env.getRobotPosition()
+                angle = self.orientation
                 angle = angle[2]
                 v = (math.cos(angle), math.sin(angle))
                 for n in neighbors:
                     costs += [self.env.edge(pos, n) + self.env.getMap(n[0], n[1], 0)]
-                    dots += [self.env.dotProduct((n[0] - robotPosition[0], n[1] - robotPosition[1]),v)]
+                    dots += [self.env.dotProduct((n[0] - pos[0], n[1] - pos[1]),v)]
 
                 ############## UPDATE POSITION #############
                 if costs[dots.index(max(dots))] == np.inf and neighbors[dots.index(max(dots))] not in self.env.obstacles:
@@ -121,17 +129,16 @@ class DStarAgent:
     def updateStart(self, newPosition, default = None): #pass in default to just take a certain action
         while(True):
             ############ GET INITIAL POSITIONS/ANGLES. CHECK IF TOO CLOSE TO OBSTACLE ############
-            r, position = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer) #-1 specifies we want the absolute position
-            r, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
-            r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer)
-            if r == vrep.simx_return_ok and distance != -1 and distance < MINDISTANCE:
+            position = self.env.getRobotPosition()
+            angle = self.orientation
+            distance = self.distance
+            if distance != -1 and distance < MINDISTANCE:
                 self.backRobot()
-                r, position = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
+                position = self.env.getRobotPosition()
                 break
             else:
                 ########## TRAVEL TO THE NEW POSITION ##############
-                height = position[2]
-                position = self.env.transform(position) #our coordinate frame
+                #height = position[2]
                 if not default:
                     angle = self.env.radToDeg(angle[2]) #the angles that v-rep gives range from -pi to pi radians. This is hard to work with. Convert to 0 to 360 degrees
                     angle = angle + 360 if angle < 0 else angle
@@ -159,8 +166,8 @@ class DStarAgent:
 
             ######### BREAK AND UPDATE ROBOTPOSITION IF TRANSITIONED ###########
             if position != self.env.getRobotPosition():
-                self.currHeight = height
-                self.env.updateHeight(position[0], position[1], [0,0,0], self.currHeight)
+                #self.currHeight = height
+                #self.env.updateHeight(position[0], position[1], [0,0,0], self.currHeight)
                 self.env.updateRobotPosition(position)
                 difference = self.env.euclidian(position, self.env.getRobotPosition()) #the difference in heuristic is this anyway
                 self.keyFactor += difference
@@ -215,10 +222,8 @@ class DStarAgent:
                     self.updateState(neighbor)
 
     def checkGround(self, robotPosition):
-        r, distance = vrep.simxGetFloatSignal(self.clientID, "GroundDistance", vrep.simx_opmode_buffer)
-        r, table = vrep.simxGetStringSignal(self.clientID, "threeDimData", vrep.simx_opmode_buffer)
-        if r == vrep.simx_return_ok:
-            table = vrep.simxUnpackFloats(table)
+        table = self.data3D
+        if len(table) > 0:
             dim = int((len(table) / 3)**(1/2))
             if dim*dim*3 != len(table):
                 return set()
@@ -230,14 +235,16 @@ class DStarAgent:
 
     def checkProximity(self):
         ###### DETECT NEW OBSTACLE AND ADD TO OUR ARRAY SPACE GRAPH ############
-        r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer) #retrieves distance of a detected object from child script
-        error, state, point, handle, vector = vrep.simxReadProximitySensor(self.clientID, self.proxHandles[0], vrep.simx_opmode_buffer)
-        if r != vrep.simx_return_ok or distance == -1 or r == 1: #if nothing was detected
+        distance = self.distance
+        vector = self.proxVec
+        if distance == -1: #if nothing was detected '''TODO: work on defaults here'''
             return (False, None)
         ##### IF SOMETHING WAS DETECTED ##########
         self.stopRobot()
-        r, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
-        r, currPosition = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_buffer)
+        angle = self.orientation
+        currPosition = self.env.inverseTransform(self.env.getRobotPosition())
+        print(currPosition)
+        print(angle[2])
         vector = self.env.rotate(vector, angle)
         slope = ((vector[0]**2 + vector[1]**2)**(1/2))/vector[2]
         slope = -slope if vector[1] > 0 else slope #we use the y axis as our reference. If the normal vector is facing positive, then it must have a negative slope
@@ -245,15 +252,14 @@ class DStarAgent:
         ydist = math.sin(angle[2]) * distance
         worldx = xdist + currPosition[0]
         worldy = ydist + currPosition[1]
-        location = (worldx, worldy)
-        location =self.env.transform(location)
+        location =self.env.transform((worldx, worldy))
 
         if slope < SLOPETRAVEL: #if the detection has a slope considered travelable
-            if (location not in self.env.slopes):
-                self.env.updateSlope(location[0], location[1], slope)
-                self.env.updateHeight(location[0], location[1], vector)
-                self.env.slopes.add(location)
-                '''TODO: update the cost of travelling across this node given that the SLOPE has changed. Make edge weights proportional to the slope'''
+            #if (location not in self.env.slopes):
+                #self.env.updateSlope(location[0], location[1], slope)
+                #self.env.updateHeight(location[0], location[1], vector)
+                #self.env.slopes.add(location)
+                #'''TODO: update the cost of travelling across this node given that the SLOPE has changed. Make edge weights proportional to the slope'''
             return (False, None)
         self.env.setMap(location[0], location[1], 2, np.inf)
 
@@ -265,52 +271,23 @@ class DStarAgent:
         return (True, location)
 
     def prepare(self):
-        self.clearSignal()
-
         ################ GET ROBOT/GOAL POSITIONS, MAP DIM WITH RESOLUTION, TRANSFORM ###########################
-        r, self.robotHandle = vrep.simxGetObjectHandle(self.clientID, 'body#1', vrep.simx_opmode_oneshot_wait)
-        r, self.goalHandle = vrep.simxGetObjectHandle(self.clientID, 'Goal', vrep.simx_opmode_oneshot_wait)
-        r = -1
-        while (r != vrep.simx_return_ok):
-            r, robotPosition = vrep.simxGetObjectPosition(self.clientID, self.robotHandle, -1, vrep.simx_opmode_streaming) #-1 specifies we want the absolute position
-            self.env.updateRobotPosition(robotPosition)
-        r = -1
-        while (r != vrep.simx_return_ok):
-            r, goalPosition = vrep.simxGetObjectPosition(self.clientID, self.goalHandle, -1, vrep.simx_opmode_streaming)
-            self.env.updateGoal(goalPosition)
-        rCode = -1
-        while (rCode != vrep.simx_return_ok):
-            rCode, angle = vrep.simxGetObjectOrientation(self.clientID, self.robotHandle, -1, vrep.simx_opmode_streaming) #just to prepare our vrep
-        robotPosition = self.env.transform(robotPosition)
-        goalPosition = self.env.transform(goalPosition)
-        self.env.updateRobotPosition(robotPosition)
-        self.env.updateGoal(goalPosition)
+        while (self.env.getRobotPosition() == None):
+            x = 1 + 1 #something random
+        robotPosition = self.env.getRobotPosition()
+        while (self.env.getGoal() == None):
+            x = 1 + 1
+        goalPosition = self.env.getGoal()
         self.env.initializeMap()
 
-        ################## PREPARE SENSORS ############################
-        rCode, proxHandle = vrep.simxGetObjectHandle(self.clientID, 'sensor#1', vrep.simx_opmode_oneshot_wait)
-        if rCode != vrep.simx_return_ok or rCode != vrep.simx_return_ok:
-            print("Could not get proximity sensor handle. Exiting.")
-            sys.exit()
-        self.proxHandles = [proxHandle]
-        error, state, point, handle, vector = vrep.simxReadProximitySensor(self.clientID, self.proxHandles[0], vrep.simx_opmode_streaming)
-        rCode = -1
-        vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_streaming) #just to get things started
-        vrep.simxGetStringSignal(self.clientID, "threeDimData", vrep.simx_opmode_streaming)
-
         ############# INITIALIZE PRIORITY QUEUE ######################
-        print("OVERALL GOAL POSITION: ", self.env.getGoal())
         heapq.heapify(self.open)
-
         self.env.setMap(goalPosition[0], goalPosition[1], 1, 0)
         heapq.heappush(self.open, (self.key(goalPosition), goalPosition))
 
     def backRobot(self):
-        #r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer)
-        #while distance < MAXDISTANCE and distance != -1: #while it is not far away enough and there is an obstacle in front of him
         for i in range(WALLBACK):
             self.goBack()
-            #r, distance = vrep.simxGetFloatSignal(self.clientID, "ProxDistance", vrep.simx_opmode_buffer)
         self.stopRobot()
 
     def key(self, point):
@@ -322,3 +299,21 @@ class DStarAgent:
     def calcHeuristic(self, point):
         #calculates the heuristic of a given point. Heuristic should equal the distance from start plus key factor
         return (self.env.euclidian(point, self.env.getRobotPosition()))
+
+    def rosRobPos(self, message):
+        self.env.updateRobotPosition(self.env.transform(message.data))
+
+    def rosGoalPos(self, message):
+        self.env.updateGoal(self.env.transform(message.data))
+
+    def rosRobOrient(self, message):
+        self.orientation = message.data 
+
+    def rosProxDist(self, message):
+        self.distance = message.data
+
+    def rosProxVec(self, message):
+        self.proxVec = message.data
+
+    def ros3DSensor(self, message):
+        self.data3D = message.data

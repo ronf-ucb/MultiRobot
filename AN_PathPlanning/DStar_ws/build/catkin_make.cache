@@ -1,0 +1,2 @@
+DStarNavigator
+-DCATKIN_DEVEL_PREFIX=/home/austinnguyen/BML/MultiRobot/AN_PathPlanning/DStar_ws/devel -DCMAKE_INSTALL_PREFIX=/home/austinnguyen/BML/MultiRobot/AN_PathPlanning/DStar_ws/install -G Unix Makefiles

@@ -1,0 +1,8 @@
+prefix=/home/austinnguyen/BML/MultiRobot/AN_PathPlanning/DStar_ws/devel
+
+Name: DStarNavigator
+Description: Description of DStarNavigator
+Version: 0.0.0
+Cflags: 
+Libs: -L/home/austinnguyen/BML/MultiRobot/AN_PathPlanning/DStar_ws/devel/lib 
+Requires: 

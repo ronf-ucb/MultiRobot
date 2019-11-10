@@ -1,6 +1,8 @@
+#! /usr/bin/env python
+
 import rospy
-from std_msgs.msg import Int16
-from AN_DStarAgent import DStarAgent
+from geometry_msgs.msg import Vector3
+from AN_DStarAgentROS import DStarAgent
 
 LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
@@ -9,8 +11,7 @@ class LeggedDStar(DStarAgent):
     def __init__(self, leftName, rightName):
         super(LeggedDStar, self).__init__() #call parent class init
         #ROS: publish to V-Rep
-        self.pubRight = rospy.Publisher("/rightFrequency", Int16, queue_size = 1)
-        self.pubLeft = rospy.Publisher("/leftFrequency", Int16, queue_size = 1)
+        self.pub = rospy.Publisher("/frequency", Vector3, queue_size = 1)
         #robot movement
         self.LSignalName = leftName
         self.RSignalName = rightName
@@ -44,11 +45,12 @@ class LeggedDStar(DStarAgent):
         self.sendSignal()
 
     def sendSignal(self):
-        self.pubRight.publish(self.CycleFreqR)
-        self.pubLeft.publish(self.CycleFreqL)
+        v = Vector3()
+        v.x = self.CycleFreqL
+        v.y = self.CycleFreqR
+        self.pub.publish(v)
 
-if __name__ == "__main__":
-    rospy.init_node("RobotSignals", anonymous=True)
-    agent = LeggedDstar(LSignalName, RSignalName)
-    agent.prepare()
-    agent.policy()
+rospy.init_node("Agent", anonymous=True)
+agent = LeggedDStar(LSignalName, RSignalName)
+agent.prepare()
+agent.policy()
