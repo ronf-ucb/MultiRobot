@@ -123,6 +123,29 @@ foreach(library ${libraries})
     list(APPEND catkin_tools_prebuild_LIBRARIES ${library})
   elseif(${library} MATCHES "^-l")
     list(APPEND catkin_tools_prebuild_LIBRARIES ${library})
+  elseif(${library} MATCHES "^-")
+    # This is a linker flag/option (like -pthread)
+    # There's no standard variable for these, so create an interface library to hold it
+    if(NOT catkin_tools_prebuild_NUM_DUMMY_TARGETS)
+      set(catkin_tools_prebuild_NUM_DUMMY_TARGETS 0)
+    endif()
+    # Make sure the target name is unique
+    set(interface_target_name "catkin::catkin_tools_prebuild::wrapped-linker-option${catkin_tools_prebuild_NUM_DUMMY_TARGETS}")
+    while(TARGET "${interface_target_name}")
+      math(EXPR catkin_tools_prebuild_NUM_DUMMY_TARGETS "${catkin_tools_prebuild_NUM_DUMMY_TARGETS}+1")
+      set(interface_target_name "catkin::catkin_tools_prebuild::wrapped-linker-option${catkin_tools_prebuild_NUM_DUMMY_TARGETS}")
+    endwhile()
+    add_library("${interface_target_name}" INTERFACE IMPORTED)
+    if("${CMAKE_VERSION}" VERSION_LESS "3.13.0")
+      set_property(
+        TARGET
+        "${interface_target_name}"
+        APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES "${library}")
+    else()
+      target_link_options("${interface_target_name}" INTERFACE "${library}")
+    endif()
+    list(APPEND catkin_tools_prebuild_LIBRARIES "${interface_target_name}")
   elseif(TARGET ${library})
     list(APPEND catkin_tools_prebuild_LIBRARIES ${library})
   elseif(IS_ABSOLUTE ${library})
@@ -131,7 +154,7 @@ foreach(library ${libraries})
     set(lib_path "")
     set(lib "${library}-NOTFOUND")
     # since the path where the library is found is returned we have to iterate over the paths manually
-    foreach(path /home/vrep/MultiRobot/ros_workspace/followROS/install/lib;/home/vrep/MultiRobot/ros_workspace/followROS/devel/lib;/opt/ros/melodic/lib)
+    foreach(path /home/vrep/MultiRobot/ros_workspace/followROS/install/lib;/home/vrep/vrepProjects/resatlomodel/ros_ws/devel/lib;/opt/ros/melodic/lib)
       find_library(lib ${library}
         PATHS ${path}
         NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)

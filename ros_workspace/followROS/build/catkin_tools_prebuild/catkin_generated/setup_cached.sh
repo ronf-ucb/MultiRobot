@@ -8,9 +8,6 @@
 
 # modified environment variables
 export CMAKE_PREFIX_PATH="/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/catkin_tools_prebuild:$CMAKE_PREFIX_PATH"
-export LD_LIBRARY_PATH="/opt/ros/melodic/lib:/usr/local/cuda-9.0/lib64"
-export PKG_CONFIG_PATH="/opt/ros/melodic/lib/pkgconfig"
 export PWD="/home/vrep/MultiRobot/ros_workspace/followROS/build/catkin_tools_prebuild"
-export PYTHONPATH="/opt/ros/melodic/lib/python2.7/dist-packages:/home/vrep/MultiRobot/ros_workspace/follow2/src/vrep_ros_interface/external"
 export ROSLISP_PACKAGE_DIRECTORIES="/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/catkin_tools_prebuild/share/common-lisp:$ROSLISP_PACKAGE_DIRECTORIES"
 export ROS_PACKAGE_PATH="/home/vrep/MultiRobot/ros_workspace/followROS/build/catkin_tools_prebuild:$ROS_PACKAGE_PATH"

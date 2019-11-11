@@ -56,9 +56,9 @@ boost/lexical_cast.hpp
 boost/optional.hpp
 -
 
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repPlusPlus/Plugin.cpp
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/external/v_repPlusPlus/Plugin.cpp
 Plugin.h
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repPlusPlus/Plugin.h
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/external/v_repPlusPlus/Plugin.h
 string
 -
 vector
@@ -66,7 +66,7 @@ vector
 cstring
 -
 
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repPlusPlus/Plugin.h
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/external/v_repPlusPlus/Plugin.h
 iostream
 -
 string
@@ -76,7 +76,7 @@ vector
 stdexcept
 -
 v_repLib.h
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/external/v_repPlusPlus/v_repLib.h
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/external/v_repPlusPlus/v_repLib.h
 direct.h
 -
 shlwapi.h
@@ -84,11 +84,11 @@ shlwapi.h
 unistd.h
 -
 
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/include/ros_msg_builtin_io.h
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/include/ros_msg_builtin_io.h
 ros/ros.h
 -
 
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/include/vrep_ros_interface.h
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/include/vrep_ros_interface.h
 iostream
 -
 sstream
@@ -106,7 +106,7 @@ ros/ros.h
 image_transport/image_transport.h
 -
 config.h
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/include/config.h
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/include/config.h
 ros_msg_builtin_io.h
 -
 stubs.h
@@ -116,7 +116,7 @@ ros_msg_io.h
 ros_srv_io.h
 -
 
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/src/ros_msg_builtin_io.cpp
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/src/ros_msg_builtin_io.cpp
 ros_msg_builtin_io.h
 -
 v_repLib.h
@@ -126,7 +126,7 @@ iostream
 stubs.h
 -
 
-/home/vrep/MultiRobot/ros_workspace/followROS/src/vrep_ros_interface/src/vrep_ros_interface.cpp
+/home/vrep/MultiRobot/ros_workspace/followROS/src/v_repExtRosInterface/src/vrep_ros_interface.cpp
 vrep_ros_interface.h
 -
 v_repPlusPlus/Plugin.h

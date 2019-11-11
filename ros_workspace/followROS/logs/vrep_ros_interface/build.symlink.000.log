@@ -1,4 +1,4 @@
 Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/lib/libv_repExtRosInterface.so
 Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/lib/pkgconfig/vrep_ros_interface.pc
-Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig.cmake
 Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig-version.cmake
+Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig.cmake

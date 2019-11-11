@@ -1,4 +1,4 @@
-Linked: (/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/vrep_ros_interface/lib/libv_repExtRosInterface.so, /home/vrep/MultiRobot/ros_workspace/followROS/devel/lib/libv_repExtRosInterface.so)
-Linked: (/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/vrep_ros_interface/lib/pkgconfig/vrep_ros_interface.pc, /home/vrep/MultiRobot/ros_workspace/followROS/devel/lib/pkgconfig/vrep_ros_interface.pc)
-Linked: (/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/vrep_ros_interface/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig.cmake, /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig.cmake)
-Linked: (/home/vrep/MultiRobot/ros_workspace/followROS/devel/.private/vrep_ros_interface/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig-version.cmake, /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig-version.cmake)
+Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/lib/libv_repExtRosInterface.so
+Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/lib/pkgconfig/vrep_ros_interface.pc
+Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig-version.cmake
+Symlinking /home/vrep/MultiRobot/ros_workspace/followROS/devel/share/vrep_ros_interface/cmake/vrep_ros_interfaceConfig.cmake
