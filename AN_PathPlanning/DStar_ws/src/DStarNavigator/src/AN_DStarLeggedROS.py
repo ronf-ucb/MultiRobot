@@ -4,17 +4,12 @@ import rospy
 from geometry_msgs.msg import Vector3
 from AN_DStarAgentROS import DStarAgent
 
-LSignalName = "CycleLeft"
-RSignalName = "CycleRight"
-
 class LeggedDStar(DStarAgent):
     def __init__(self, leftName, rightName):
         super(LeggedDStar, self).__init__() #call parent class init
-        #ROS: publish to V-Rep
+        #ROS: publish to topic connected to V-Rep
         self.pub = rospy.Publisher("/frequency", Vector3, queue_size = 1)
         #robot movement
-        self.LSignalName = leftName
-        self.RSignalName = rightName
         self.CycleFreqL = 1
         self.CycleFreqR = 1
 
