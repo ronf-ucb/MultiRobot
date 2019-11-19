@@ -8,6 +8,8 @@ import heapq
 import math
 import operator
 
+EDGEBUFF = 10
+
 
 class Environment:
 
@@ -21,16 +23,7 @@ class Environment:
             self.cliffs = {}
             self.slopes = set()
             self.cliffThreshold = cliffThreshold
-            '''TODO: check these are right after transposing our graph'''
-            self.matrices = {(-1,1): -1 * diagonalLeft,
-                            (0,1): -1 * vertical,
-                            (1,1): diagonalRight,
-                            (-1,0): -1 * horizontal,
-                            (1,0): horizontal,
-                            (-1,-1): -1 * diagonalRight,
-                            (0,-1): vertical,
-                            (1,-1): diagonalLeft} #returns appropriate matrix depending on vector
-
+            
         def initializeMap(self):
             ############### NAIVELY FILL IN G AND RHS VALUES FOR MAP #########################
             self.map = np.zeros(self.mapDimensions)
@@ -39,8 +32,6 @@ class Environment:
                     cost = self.euclidian(self.goalPosition, (i,j))
                     self.map[i,j,0] = cost
                     self.map[i,j,1] = cost
-                    self.map[i,j,2] = 0
-                    self.map[i,j,3] = 0
 
         def dotProduct(self, v1, v2):
             #given a point, computes the absolute value of dot product of vector: start to point and vector: start to goal
@@ -99,9 +90,8 @@ class Environment:
                 return np.inf
             high2 = point2 in self.cliffs.keys()
             d = self.euclidian(point1, point2)
-            if high2:
-                print("WARNING: Next step has cliff hazard!")
-                return d + 10
+            if high2 or self.map[point2[0], point2[1], 0] == np.inf:
+                return d + EDGEBUFF
             return d
 
         def radToDeg(self, rad):
@@ -142,71 +132,19 @@ class Environment:
             if np.mean(norm[xSpace: 2 * xSpace, 2*ySpace:]) > self.cliffThreshold: result.add((1,0))
             if np.mean(norm[2*xSpace:, 2*ySpace:]) > self.cliffThreshold: result.add((1,-1))
             return result
-
-        def updateSlope(self, x, y, slope):
-            filter = np.zeros(FILTERSHAPE) + slope
-            left = x - FILTERSHAPE[0] // 2
-            bot = y - FILTERSHAPE[1] // 2
-            for i in range(FILTERSHAPE[0]):
-                for j in range(FILTERSHAPE[1]):
-                    self.setMap(left + i, bot + j, 2, .5 * filter[i,j] + .5 * self.getMap(i,j,2))#filter[i,j])
-
-        def updateHeight(self, x, y, vector, h = None):
-            if any(vector) and not h:
-                filter = self.filter(x,y, vector)
-                alpha = .5
-            else:
-                filter = (np.zeros(FILTERSHAPE) + 1) * h
-                alpha = 1
-            left = x - FILTERSHAPE[0] // 2
-            bot = y - FILTERSHAPE[1] // 2
-            for i in range(FILTERSHAPE[0]):
-                for j in range(FILTERSHAPE[1]):
-                    self.setMap(left + i, bot + j, 3, alpha * filter[i,j] + (1-alpha) * self.getMap(i,j,3))#filter[i,j])
-
-        def filter(self, x, y, vector):
-            #Returns a matrix that represents elevations based on slopes.
-            slope = self.getMap(x,y,2)
-            xyVec = (vector[0], vector[1])
-            #this is the normal vector of the surface. This will correspond to the direction from (x,y) to height we should base current elevation on
-            adjacents = self.neighbors((0,0), condition = True)
-            dots = []
-            for v in adjacents:
-                val = self.dotProduct(v, xyVec)
-                dots += [val]
-            index = dots.index(max(dots))
-            ref = adjacents[index]
-            deltaH = self.euclidian(self.inverseTransform(ref), self.inverseTransform((x,y))) * slope
-            newHeight = self.getMap(ref[0], ref[1], 3) + deltaH
-
-            #Compute the matrix based on the direction of our vector
-            ref = (-ref[0], -ref[1]) #find the direction our slope is actually pointing (not the normal vector)
-            matrix = self.matrices[ref]
-            filter = newHeight * (np.zeros(FILTERSHAPE) + 1) + slope * matrix
-            filter = np.clip(filter, a_min = 0, a_max = float('inf'))
-            return filter
-
-
-
-FILTERSHAPE = (5,5)
-
-diagonalRight = np.array([[-4, -3, -2, -1, 0],
-                          [-3, -2, -1, 0, 1],
-                          [-2, -1, 0, 1, 2],
-                          [-1, 0, 1, 2, 3],
-                          [0, 1, 2, 3, 4]])
-diagonalLeft = np.array([[0, 1, 2, 3, 4],
-                         [-1, 0, 1, 2, 3],
-                         [-2, -1, 0, 1, 2],
-                         [-3, -2, -1, 0, 1],
-                         [-4, -3, -2, -1, 0]])
-vertical = np.array([[2, 2, 2, 2, 2],
-                    [1, 1, 1, 1, 1],
-                    [0, 0, 0, 0, 0],
-                    [-1, -1, -1, -1, -1],
-                    [-2, -2, -2, -2, -2]])
-horizontal = np.array([[-2, -1, 0, 1, 2],
-                      [-2, -1, 0, 1, 2],
-                      [-2, -1, 0, 1, 2],
-                      [-2, -1, 0, 1, 2],
-                      [-2, -1, 0, 1, 2]])
+        
+        def tuplesToList(self, input):
+            #converts a list of tuples to a normal list
+            res = []
+            for tup in input:
+                res.append(tup[0])
+                res.append(tup[1])
+            return res
+        
+        def listToTuples(self, input):
+            #converts a list to tuples
+            assert len(input) % 2 == 0
+            res = []
+            for i in range(0, len(input) / 2, 2):
+                res.append((input[i], input[i+1]))
+            return res
