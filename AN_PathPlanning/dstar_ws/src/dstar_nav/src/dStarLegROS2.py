@@ -4,8 +4,8 @@ import rospy
 from geometry_msgs.msg import Vector3
 from AN_DStarAgentROS import DStarAgent   
 
-subscription = "/robotData"
-publisher = "/frequency"
+subscription = "/robotDataSecond"
+publisher = "/frequencySecond"
 
 class LeggedDStar(DStarAgent):
     def __init__(self, dataSub):

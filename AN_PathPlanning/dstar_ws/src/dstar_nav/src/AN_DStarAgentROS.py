@@ -12,6 +12,7 @@ import heapq
 import math
 import operator
 from dStarEnvironment import Environment
+import time
 
 
 '''Angles returned: [0] positive means angle inclination. Negative indicates angle decline
@@ -22,25 +23,30 @@ from dStarEnvironment import Environment
                     [1] positive is up from robot
                     [2] positive is away from robot'''
 
+'''TODO: Issue: adding an obstacle is not in sync with computeshortestpath -> infinite values are being propagated throug hand used for update start due to 
+    overconsistent nodes. Must somehow solve this timing issue and do things sequentially for the algorithm to work.'''
+
 WALLBACK = 150000
-SLOPETRAVEL = 1
+SLOPETRAVEL = 2
 MINDISTANCE = .02
 PADDING = 1 #degrees of padding. Specifies what range of qualifies as "'going in the desired direction'"
-RESOLUTION = 8
+RESOLUTION = 8.0
 CLIFFTHRESHOLD = .01 #height of a cliff to be considered dangerous
-MAPDIMENSIONS = (100, 100, 2)
+MAPDIMENSIONS = (80, 80, 2)
 
 class DStarAgent(object):
-    def __init__(self):
-        rospy.Subscriber("/robotData", String, self.getRobotData, queue_size = 1)
+    def __init__(self, dataSub):
+        rospy.Subscriber(dataSub, String, self.getRobotData, queue_size = 1)
         #rospy.Subscriber("/data3D", String, self.getData3D, queue_size = 1)
-        rospy.Subscriber("/proxyObstacle", Vector3, self.addObstacle, queue_size = 100)
+        rospy.Subscriber("/proxyObstacle", Vector3, self.addObstacle, queue_size = 1)
         #rospy.Subscriber("/proxyCliff", cliff, self.addCliff, queue_size  = 100)
         #self.cliffPub = rospy.Publisher("/newCliff", cliff, queue_size = 100)
-        self.obstaclePub = rospy.Publisher("/newObstacle", Vector3, queue_size = 100)
+        self.obstaclePub = rospy.Publisher("/newObstacle", Vector3, queue_size = 1)
         self.env = Environment(RESOLUTION, MAPDIMENSIONS, CLIFFTHRESHOLD)
         self.keyFactor = 0
         self.open = list()
+        self.obstacles = set()
+        self.obstacleQueue = []
         self.orientation = None
         self.distance = None 
         self.proxVec = None 
@@ -49,12 +55,10 @@ class DStarAgent(object):
     def policy(self):
         ########## WRAPPER FOR GENERAL AGENT POLICY ##################
         while (self.env.robotPosition != self.env.goalPosition):
-            print("RECOMPUTING SHORTEST PATH")
-            self.computeShortestPath() #update the map
-            #self.env.showColorGrid()
-            print("UPDATING START")
+            self.manageObstacleQueue()
             ########### CONTINUE UNTIL DETECT NEW OBSTACLE ##############
-            while(True):
+            while(len(self.obstacleQueue) == 0):
+                self.computeShortestPath() #update the map
                 ########### CHECK FOR OBSTACLE ##############
                 pos = self.env.robotPosition    
                 #cliffs = self.checkGround(pos)
@@ -67,9 +71,9 @@ class DStarAgent(object):
                 #    break
                 obstacleAndLocation = self.checkProximity()
                 if obstacleAndLocation[0]:
-                    print("NEW OBSTACLE DETECTED")
                     self.stopRobot()
                     self.manageObstacle(obstacleAndLocation[1])
+                    time.sleep(2) #give time for the proxy to work
                     break
                 ########## CHOOSE OPTIMAL POSITION TO TRAVEL TO #############
                 neighbors = self.env.neighbors(pos)
@@ -84,7 +88,7 @@ class DStarAgent(object):
 
                 ############## UPDATE POSITION #############
                 i = dots.index(max(dots))
-                if costs[i] == np.inf and self.env.map[neighbors[i][0], neighbors[i][1], 0] != np.inf:
+                if costs[i] == np.inf and neighbors[i] not in self.obstacles:
                     #if the direction we are facing has infinite value and is a cliff
                     self.updateStart((0,0), "back")
                 else:
@@ -100,7 +104,7 @@ class DStarAgent(object):
 
     def manageObstacle(self, location):
         ######### DETECTED OBJECT. REMOVE FROM PQ. UPDATE COSTS OF NEIGHBORS ###########
-        '''TODO: send to proxy'''
+        self.obstacles.add(location)
         send = Vector3()
         send.x = location[0]
         send.y = location[1]
@@ -108,16 +112,21 @@ class DStarAgent(object):
         self.obstaclePub.publish(send)
 
     def addObstacle(self, message):
-        location = (message.x, message.y)
-        self.env.map[location[0], location[1], 0] = np.inf
-        self.env.map[location[0], location[1], 1] = np.inf
-        inQueue = [entry for entry in self.open if entry[1] == location]
-        for e in inQueue:
-            self.open.remove(e)
-        neighbors = self.env.neighbors(location)
-        for n in neighbors:
-            if self.map[n[0], n[1], 0] != np.inf:
-                self.updateState(n)
+        location = (int(message.x), int(message.y))
+        self.obstacleQueue.append(location)
+
+    def manageObstacleQueue(self):
+        while len(self.obstacleQueue) > 0:
+            location = self.obstacleQueue.pop()
+            self.env.map[location[0], location[1], 0] = np.inf
+            self.env.map[location[0], location[1], 1] = np.inf
+            inQueue = [entry for entry in self.open if entry[1] == location]
+            for e in inQueue:
+                self.open.remove(e)
+            neighbors = self.env.neighbors(location)
+            for n in neighbors:
+                if n not in self.obstacles:
+                    self.updateState(n)
 
 
     def manageCliff(self, robPos, cliffs):
@@ -134,10 +143,10 @@ class DStarAgent(object):
         for vector in cliffs:
             update += [tuple(map(operator.add, robotPosition, vector))]
         for newCliff in update:
-            self.updateState(newCliff)
+            if (self.env.map[newCliff[0], newCliff[1], 0] != np.inf):
+                self.updateState(newCliff)
 
     def updateStart(self, newPosition, default = None): #pass in default to just take a certain action
-        print("Curr: ", self.env.robotPosition, "going to: ", newPosition)
         while(True):
             ############ GET INITIAL POSITIONS/ANGLES. CHECK IF TOO CLOSE TO OBSTACLE ############
             position = self.env.robotPosition
@@ -183,7 +192,6 @@ class DStarAgent(object):
     def updateState(self, s):
         ######## UPDATE THIS STATE BY CALCULATING NEW RHS VALUE ##########
         if s != self.env.goalPosition:
-            minimum = np.inf
             gPlusEdge = []
             for n in self.env.neighbors(s):
                 gPlusEdge += [self.env.map[n[0], n[1], 0] + self.env.edge(s, n)]
@@ -199,8 +207,10 @@ class DStarAgent(object):
             heapq.heappush(self.open, (self.key(s), s))
 
     def computeShortestPath(self):
-        ######## PROPAGATE ALL CHANGES TO FIND SHORTEST PATH ############
-        while (len(self.open) > 0):
+        ######## PROPAGATE ALL CHANGES TO FIND SHORTEST PATH ############          
+        pos = self.env.robotPosition
+        count = 0
+        while (len(self.open) > 0 and ((heapq.nlargest(1, self.open)[0][0] < self.key(pos)) or (self.env.map[pos[0], pos[1], 0] != self.env.map[pos[0], pos[1], 1]))):
             node = heapq.heappop(self.open) #the points are already transformed
             currPoint = node[1]
             x = currPoint[0]
@@ -208,7 +218,8 @@ class DStarAgent(object):
             g = self.env.map[x, y, 0]
             rhs = self.env.map[x, y, 1]
             neighbors = self.env.neighbors(currPoint)
-
+            if count > 1000: #if we are updating lots of points, stop the robot from moving
+                self.stopRobot()
             ######## CHECK FOR CONSISTENCY, UNDERCONSISTENCY, AND OVERCONSISTENCY ##########
             if g == rhs:
                 continue
@@ -216,10 +227,11 @@ class DStarAgent(object):
                 self.env.map[x,y,0] = rhs
             else:
                 self.env.map[x,y,0] = np.inf
-                n = n + [currPoint]
+                neighbors = neighbors + [currPoint]
             for n in neighbors:
-                if self.env.map[n[0], n[1], 0] != np.inf:
+                if n not in self.obstacles:
                     self.updateState(n)
+            count += 1
 
     def checkGround(self, robotPosition):
         table = self.data3D
@@ -235,45 +247,40 @@ class DStarAgent(object):
         if self.distance == -1: #if nothing was detected '''TODO: work on defaults here'''
             return (False, None)
         ##### IF SOMETHING WAS DETECTED ##########
-        '''TODO: this is getting computed incorrectly. Fix it!'''
         self.stopRobot()
         distance = self.distance
         vector = self.proxVec
         angle = self.orientation
-        print("angle: ", angle)
-        currPosition = self.env.inverseTransform(self.env.robotPosition)
-        print(currPosition)
+        currPosition = self.env.robotPositionUT
         vector = self.env.rotate(vector, angle)
-        slope = -((vector[0]**2 + vector[1]**2)**(1/2))/vector[2] if vector[1] > 0 else ((vector[0]**2 + vector[1]**2)**(1/2))/vector[2]
-
-        if slope < SLOPETRAVEL: #if the detection has a slope considered travelable
+        #slope = -((vector[0]**2 + vector[1]**2)**(1/2))/vector[2] if vector[1] > 0 else ((vector[0]**2 + vector[1]**2)**(1/2))/vector[2]
+        slope = ((vector[0]**2 + vector[1]**2)**(1/2))/vector[2]
+        if abs(slope) < SLOPETRAVEL: #if the detection has a slope considered travelable
             return (False, None)
-
         xdist = math.cos(angle[2]) * distance
         ydist = math.sin(angle[2]) * distance              
         location = (xdist + currPosition[0], ydist + currPosition[1])
-        print("locations of new obstacle: ", location)
-        print(yes)
-
+        location = self.env.transform(location)
         ####### IF IT IS A NEW OBSTACLE, RETURN THE RESULTS #########
-        if self.env.map[location[0], location[1], 0] == np.inf:
+        if location in self.obstacles:
             return (False, None)
         return (True, location)
 
     def prepare(self):
         ################ GET ROBOT/GOAL POSITIONS, MAP DIM WITH RESOLUTION, TRANSFORM ###########################
-        while (self.env.robotPosition == None and self.env.goalPosition == None):
+        while (self.env.robotPosition == None or self.env.goalPosition == None):
             x = 1 + 1 #something random
         #while(self.data3D == None):
         #    x = 1+1
         #self.dim = int(math.sqrt(len(self.data3D) / 3))
         ############# INITIALIZE PRIORITY QUEUE ######################
+        while(self.orientation == None):
+            x = 1 + 1
         self.env.initializeMap()
         heapq.heapify(self.open)
         goalPosition = self.env.goalPosition
         self.env.map[goalPosition[0], goalPosition[1], 1] = 0
         heapq.heappush(self.open, (self.key(goalPosition), goalPosition))
-        print("ALL DONE")
 
     def backRobot(self):
         for i in range(WALLBACK):
@@ -292,11 +299,10 @@ class DStarAgent(object):
     
     def getRobotData(self, message):
         floats = vrep.simxUnpackFloats(message.data)
-        self.env.robotPosition = self.env.transform((floats[0], floats[1], floats[2]))
+        self.env.robotPositionUT = (floats[0], floats[1], floats[2])
+        self.env.robotPosition = self.env.transform(self.env.robotPositionUT)
         self.env.goalPosition = self.env.transform((floats[3], floats[4], floats[5]))
         self.orientation = (floats[6], floats[7], floats[8])
-        print(self.orientation)
-        print(yes)
         self.proxVec = (floats[9], floats[10], floats[11])
         self.distance = floats[12]
     

@@ -8,13 +8,14 @@ import heapq
 import math
 import operator
 
-EDGEBUFF = 10
+EDGEBUFF = 20
 
 
 class Environment:
 
         def __init__(self, res, mapDimensions, cliffThreshold):
             self.robotPosition = None
+            self.robotPositionUT = None
             self.goalPosition = None
             self.mapDimensions = mapDimensions
             self.res = res #how many nodes per meter we want to process. Increase resolution to take into account more nodes...but might slow down processing
@@ -45,7 +46,7 @@ class Environment:
             return (x1/norm1) * (x2/norm2) + (y1/norm1) * (y2/norm2)
 
         def euclidian(self, point1, point2):
-            return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1])**2) **(1/2)
+            return math.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1])**2)
 
         def neighbors(self, point, condition = False):
             #returns all the neighbors in array coordinates of a given point
@@ -84,13 +85,15 @@ class Environment:
             return np.array([[math.cos(theta), -math.sin(theta), 0], [math.sin(theta), math.cos(theta), 0], [0,0,1]])
 
         def edge(self, point1, point2): #abstraction for edges
-            high1 = point1 in self.cliffs.keys()
-            low2 = tuple(map(operator.sub, point2, point1)) in self.cliffs[point1] if high1 else False
-            if (high1 and low2): #if there is a significant height difference between the two points
-                return np.inf
-            high2 = point2 in self.cliffs.keys()
+            #high1 = point1 in self.cliffs.keys()
+            #low2 = tuple(map(operator.sub, point2, point1)) in self.cliffs[point1] if high1 else False
+            #if (high1 and low2): #if there is a significant height difference between the two points
+            #    return np.inf
+            #high2 = point2 in self.cliffs.keys()
             d = self.euclidian(point1, point2)
-            if high2 or self.map[point2[0], point2[1], 0] == np.inf:
+            nearObstacle = any([self.map[n[0], n[1], 0] == np.inf for n in self.neighbors(point2)])
+            #if high2 or nearObstacle:
+            if nearObstacle:
                 return d + EDGEBUFF
             return d
 
