@@ -4,7 +4,6 @@ import rospy
 from std_msgs.msg import String, Header
 import numpy as np
 
-from scipy import signal, stats
 import matplotlib.pyplot as plt
 import math
 from geometry_msgs.msg import Polygon, Point32, Vector3
@@ -25,7 +24,7 @@ coef = 3
 
 Max_freq = BaseFreq * coef - 0.5
 vel_diff = 0.01
-vel_threshold = 4000
+vel_threshold = 100000
 
 class Pursuit:
     def __init__(self, leftName, rightname):
@@ -60,17 +59,19 @@ class Pursuit:
 
         self.path = Vector3()      # destination points
 
-        # self.kp = 0.3
         self.kp = 2
-        # self.kd = -0.3
-        self.kd = 2
-        self.ki = 0.01
+        # self.kp = 1.5
 
+        # self.kd = 5
+        self.kd = 10
+
+        self.ki = 0
+        # self.ki = 0.01
+        self.total_theta = 0
 
         self.eta = None
 
-        self.radiu = 0.05      # the dist from destination point that robot stop
-        self.radiu = 0.10      # the dist from destination point that robot stop
+        self.radiu = 0.1     # the dist from destination point that robot stop
         self.flag = False   # check if robot reach the destination point
 
         # for test :: to get the handle
@@ -124,7 +125,6 @@ class Pursuit:
         dx = self.pos.x - pose.x
         dy = self.pos.y - pose.y
         dist = math.sqrt(dx ** 2 + dy ** 2)
-        self.total_theta = 0
         return dist < self.radiu
 
     def controller(self):
@@ -157,18 +157,19 @@ class Pursuit:
                 self.RCycleFreq = self.last_R_freq - vel_diff
         
             # for limit the vel
-            # if abs(self.LCycleFreq) > abs(Max_freq) :
-            #     self.LCycleFreq = Max_freq
-            #     self.RCycleFreq -= vel_revised
-            # if abs(self.RCycleFreq) > abs(Max_freq) :
-            #     self.RCycleFreq = Max_freq
-            #     self.LCycleFreq += vel_revised
-            if abs(self.LCycleFreq) > abs(Max_freq) and theta > 0:
+            if abs(self.LCycleFreq) > abs(Max_freq) :
                 self.LCycleFreq = Max_freq
-                self.RCycleFreq *= -1
-            elif abs(self.RCycleFreq) > abs(Max_freq) and theta < 0 :
+                self.RCycleFreq -= vel_revised
+            if abs(self.RCycleFreq) > abs(Max_freq) :
                 self.RCycleFreq = Max_freq
-                self.LCycleFreq *= -1
+                self.LCycleFreq += vel_revised
+
+            # if abs(self.LCycleFreq) > abs(Max_freq) and theta > 0:
+            #     self.LCycleFreq = Max_freq
+            #     self.RCycleFreq *= -1
+            # elif abs(self.RCycleFreq) > abs(Max_freq) and theta < 0 :
+            #     self.RCycleFreq = Max_freq
+            #     self.LCycleFreq *= -1
 
             # print("goal_num : ", self.path_num)
             # print("Error : ", theta)
@@ -183,8 +184,7 @@ class Pursuit:
                 print("Bingo !!!")
             else:
                 self.path_num += 1
-                # self.total_theta = 0
-
+                self.total_theta = 0
         self.last_theta = theta
         self.total_theta += theta
 
