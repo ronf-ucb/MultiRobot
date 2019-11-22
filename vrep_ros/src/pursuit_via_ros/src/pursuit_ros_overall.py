@@ -113,7 +113,7 @@ class Overall_controll:
 
 if __name__=="__main__":
     rospy.init_node("overall_controller")
-    Overall_controll(plan_A)
+    # Overall_controll(plan_A)
     # Overall_controll(plan_B)
-    # Overall_controll(plan_C)
+    Overall_controll(plan_C)
     rospy.spin()

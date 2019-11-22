@@ -19,9 +19,13 @@ import time
 
 LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
-# BaseFreq = -5
-# BaseFreq = -0.5
-BaseFreq = -2.0
+# BaseFreq = -3
+BaseFreq = -3
+coef = 3
+
+Max_freq = BaseFreq * coef - 0.5
+vel_diff = 0.01
+vel_threshold = 100000
 
 class Pursuit:
     def __init__(self, leftName, rightname):
@@ -57,23 +61,25 @@ class Pursuit:
         self.path = Vector3()      # destination points
 
         # self.kp = 0.3
-        self.kp = 0.9
+        self.kp = 2
         # self.kd = -0.3
-        self.kd = -0.0
+        self.kd = 2
+        self.ki = 0.01
+
 
         self.eta = None
 
-        self.radiu = 0.15      # the dist from destination point that robot stop
+        self.radiu = 0.05      # the dist from destination point that robot stop
+        self.radiu = 0.10      # the dist from destination point that robot stop
         self.flag = False   # check if robot reach the destination point
 
         # for test :: to get the handle
         self.cube = None
         self.cube1 = None
 
-        self.vel_diff = 0.02
-        # self.vel_diff = 0.1
-        self.vel_curr_left = 0
-        self.vel_curr_right = 0
+        self.last_L_freq = 0
+        self.last_R_freq = 0
+
 
     def getPos(self, msg):
         """
@@ -105,6 +111,9 @@ class Pursuit:
         vector_x = np.cos(self.ori) * (pose.x - self.pos.x) + np.sin(self.ori) * (pose.y - self.pos.y)
         vector_y = -np.sin(self.ori) * (pose.x - self.pos.x) + np.cos(self.ori) * (pose.y - self.pos.y)
         eta = math.atan2(vector_y, vector_x)
+        # vector_x = (pose.x - self.pos.x)
+        # vector_y = (pose.y - self.pos.y)
+        # eta =math.atan(math.tan(math.atan2(vector_y, vector_x) - self.ori))
         return eta
 
     def if_goal_reached(self, pose):
@@ -115,6 +124,7 @@ class Pursuit:
         dx = self.pos.x - pose.x
         dy = self.pos.y - pose.y
         dist = math.sqrt(dx ** 2 + dy ** 2)
+        self.total_theta = 0
         return dist < self.radiu
 
     def controller(self):
@@ -129,64 +139,51 @@ class Pursuit:
         
 
         if not self.if_goal_reached(self.path):
-            self.LCycleFreq = BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd)
-            self.RCycleFreq = BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd)
+            vel_revised = (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta)
+            self.LCycleFreq = (BaseFreq + vel_revised)*coef
+            self.RCycleFreq = (BaseFreq - vel_revised)*coef
+
+            print("expect_L", self.LCycleFreq)
+            print("expect_R", self.RCycleFreq)
 
             # for acceleration
-            if abs(self.LCycleFreq - self.vel_curr_left) > 0.5 :
-                if self.LCycleFreq < self.vel_curr_left:
-                    self.vel_curr_left -= self.vel_diff
-                elif self.LCycleFreq > self.vel_curr_left:
-                    self.vel_curr_left += self.vel_diff
-            if abs(self.RCycleFreq - self.vel_curr_right) > 0.5 :
-                if self.RCycleFreq < self.vel_curr_right:
-                    self.vel_curr_right -= self.vel_diff
-                elif self.RCycleFreq > self.vel_curr_right:
-                    self.vel_curr_right += self.vel_diff
-            if self.vel_curr_left < BaseFreq - 1 :
-                self.vel_curr_left = BaseFreq - 2
-                self.vel_curr_right += 2
-            if self.vel_curr_right < BaseFreq - 1 :
-                self.vel_curr_right = BaseFreq - 2
-                self.vel_curr_left += 2
-
+            print("L : ", self.last_L_freq)
+            print("R : ", self.last_R_freq)
+            if abs(self.LCycleFreq - self.last_L_freq) > vel_threshold :
+                print("L")
+                self.LCycleFreq = self.last_L_freq - vel_diff
+            if abs(self.RCycleFreq - self.last_R_freq) > vel_threshold :
+                print("R")
+                self.RCycleFreq = self.last_R_freq - vel_diff
         
-            print("goal_num : ", self.path_num)
-            print("Error : ", theta)
-            print("goal : ", self.path)
-            # print("self.L_vel : ", self.LCycleFreq)
-            # print("self.R_vel : ", self.RCycleFreq)
-            
-            print("self.L_vel : ", self.vel_curr_left)
-            print("self.R_vel : ", self.vel_curr_right)
-            
+            # for limit the vel
+            if abs(self.LCycleFreq) > abs(Max_freq) :
+                self.LCycleFreq = Max_freq
+                self.RCycleFreq -= vel_revised
+            if abs(self.RCycleFreq) > abs(Max_freq) :
+                self.RCycleFreq = Max_freq
+                self.LCycleFreq += vel_revised
+
+            # print("goal_num : ", self.path_num)
+            # print("Error : ", theta)
+            # print("goal : ", self.path)
+            print("self.L_vel : ", self.LCycleFreq)
+            print("self.R_vel : ", self.RCycleFreq)
         else:
             print("goal reached !!")
-            # self.LCycleFreq = 0
-            # self.RCycleFreq = 0
-            # self.vel_curr_left = 0
-            # self.vel_curr_right = 0
             if self.path_num == 15:
-                print("Bingo !!!")
                 self.LCycleFreq = 0
                 self.RCycleFreq = 0
-                self.vel_curr_left = 0
-                self.vel_curr_right = 0
+                print("Bingo !!!")
             else:
                 self.path_num += 1
 
         self.last_theta = theta
+        self.total_theta += theta
 
         vel = Vector3()
-        # vel.x = self.LCycleFreq
-        # vel.y = self.RCycleFreq
-
-        vel.x = self.vel_curr_left
-        vel.y = self.vel_curr_right
-
-        # for test only
-        # vel.x = BaseFreq
-        # vel.y = BaseFreq
+        vel.x = self.LCycleFreq
+        vel.y = self.RCycleFreq
 
         pathMsg = Vector3()
         pathMsg.x = self.path_num
@@ -194,8 +191,11 @@ class Pursuit:
         self.pub_pathNum.publish(pathMsg)
         self.pub_vel.publish(vel)
 
+        self.last_L_freq = self.LCycleFreq
+        self.last_R_freq = self.RCycleFreq
+
 
 if __name__=="__main__":
-    rospy.init_node("cockroachRun_1")
+    rospy.init_node("cockroachRun")
     Pursuit(LSignalName, RSignalName)
     rospy.spin()
