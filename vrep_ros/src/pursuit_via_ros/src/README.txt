@@ -1,5 +1,5 @@
-This version uses pursuit_ros_optimized.py and pursuit_ros_optimized.
-This week, we optimized the structure of robot and added the velocity limit to prevent robot from much high frequency.
-Currently, the robot can move at a relatively high speed with a good pursuit performance.
+This week we optimized the model. "Bullet 2.78" is much more realistic than ODE and the performance is much better.
 
-[Using "rosrun pursuit_via_ros pursuit_ros_optimized.py"]
+We adjusted the weight. The mass of body is 1*10^-2. The mass of each leg is 2*10^-4.
+
+[This version includes "pursuit_ros_optimized.py" , "pursuit_real.ttt"]
