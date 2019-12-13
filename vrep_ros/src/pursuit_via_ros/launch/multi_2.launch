@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+
+<launch>
+    <node pkg="pursuit_via_ros" type="pursuit_ros_first.py" name="tracking_robot_1" output="screen"/>
+    <!-- <node pkg="pursuit_via_ros" type="pursuit_ros_second.py" name="following_robot_1" output="screen"/> -->
+    <node pkg="pursuit_via_ros" type="pursuit_ros_overall.py" name="overall_controller" output="screen"/>
+</launch>
