@@ -22,8 +22,8 @@ RSignalName = "CycleRight"
 # BaseFreq = 1
 # BaseFreq = -1
 BaseFreq = -2
-coef = 1
-# coef = 2
+# coef = 1
+coef = 1.2
 
 state = 0
 obj = None

@@ -20,8 +20,8 @@ LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
 # BaseFreq = -1
 BaseFreq = -2
-coef = 0.8
-# coef = 1.6
+# coef = 0.8
+coef = 1.0
 
 state = 0
 obj = None
@@ -184,8 +184,8 @@ class Pursuit:
             # print("goal_num : ", self.path_num)
             # print("Error : ", theta)
             # print("goal : ", self.path)
-            # print("self.L_vel : ", self.LCycleFreq)
-            # print("self.R_vel : ", self.RCycleFreq)
+            print("self.L_vel : ", self.LCycleFreq)
+            print("self.R_vel : ", self.RCycleFreq)
             if  self.stop_sig == 1:
                 self.LCycleFreq = 0
                 self.RCycleFreq = 0
