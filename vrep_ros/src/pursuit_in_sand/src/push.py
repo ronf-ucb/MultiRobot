@@ -18,9 +18,10 @@ import time
 
 LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
-# BaseFreq = -3
+# BaseFreq = -1
 BaseFreq = -2
 coef = 0.8
+# coef = 1.6
 
 state = 0
 obj = None
@@ -29,13 +30,13 @@ obj = None
 class Pursuit:
     def __init__(self, leftName, rightname):
 
-
         self.pos0 = Point32()
         self.pos1 = Point32()
         self.pos2 = Point32()
         # prepare the sub and pub
         self.sub_path = rospy.Subscriber("/cockroachPath_push", Vector3, self.getPath, queue_size=1)
-        self.sub_r_pos = rospy.Subscriber("/cockroachPos_push", Point32, self.getPos, queue_size=1)
+        self.sub_push_pos = rospy.Subscriber("/cockroachPos_push", Point32, self.getPushPos, queue_size=1)
+        self.sub_pull_pos = rospy.Subscriber("/cockroachPos_pull", Point32, self.getPullPos, queue_size=1)
         self.pub_vel = rospy.Publisher("/cockroachVel_push", Vector3, queue_size = 1)
         self.pub_pathNum = rospy.Publisher("/pathNum_push", Vector3, queue_size = 1)
 
@@ -58,6 +59,9 @@ class Pursuit:
         self.pos = Point32()     # robot position
         self.ori = None     # robot orientation
 
+        self.pull_pos = Point32()     # another robot position
+        self.pull_ori = None     # another robot orientation
+
         self.path = Vector3()      # destination points
 
         # self.kp = 0.3
@@ -65,6 +69,11 @@ class Pursuit:
         # self.kd = -0.3
         self.kd = 2
         self.ki = 0.01
+
+        ## Now Revising the PID Coefficient
+        self.kp = 1
+        self.kd = 0
+        self.ki = 0
 
 
         self.eta = None
@@ -79,13 +88,26 @@ class Pursuit:
 
         self.last_pose = Point32()
         self.help_request = False
+
+        # coef for angle in the middle. 
+        # self.coef_theta_diff = 0.25
+        # self.coef_theta_diff = 0
+        self.coef_theta_diff = 2
     
     def get_stop_sig(self,msg):
         self.stop_sig = msg.x
         print('get msg')
 
 
-    def getPos(self, msg):
+    def getPullPos(self, msg):
+        """
+        implement localization and getPath
+        """
+
+        self.pull_pos = msg
+        self.pull_ori = msg.z
+
+    def getPushPos(self, msg):
         """
         implement localization and getPath
         """
@@ -145,10 +167,19 @@ class Pursuit:
             if theta > 1.6:
                 theta = 3.14 - theta
         
+        # theta_diff is the angle in the middle
+        theta_diff = self.getEta(self.pull_pos)
+        if theta_diff < 0:
+            if theta_diff < -1.6:
+                theta_diff = -3.14 - theta_diff
+        else:
+            if theta_diff > 1.6:
+                theta_diff = 3.14 - theta_diff
+
 
         if not self.if_goal_reached(self.path):
-            self.LCycleFreq = (BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef
-            self.RCycleFreq = (BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef
+            self.LCycleFreq = (BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef + self.coef_theta_diff * theta_diff
+            self.RCycleFreq = (BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef - self.coef_theta_diff * theta_diff
         
             # print("goal_num : ", self.path_num)
             # print("Error : ", theta)

@@ -18,9 +18,12 @@ import time
 
 LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
-# BaseFreq = -3
+
+# BaseFreq = 1
+# BaseFreq = -1
 BaseFreq = -2
 coef = 1
+# coef = 2
 
 state = 0
 obj = None
@@ -34,7 +37,8 @@ class Pursuit:
         self.pos2 = Point32()
         # prepare the sub and pub
         self.sub_path = rospy.Subscriber("/cockroachPath_pull", Vector3, self.getPath, queue_size=1)
-        self.sub_r_pos = rospy.Subscriber("/cockroachPos_pull", Point32, self.getPos, queue_size=1)
+        self.sub_pull_pos = rospy.Subscriber("/cockroachPos_pull", Point32, self.getPullPos, queue_size=1)
+        self.sub_push_pos = rospy.Subscriber("/cockroachPos_push", Point32, self.getPushPos, queue_size=1)
         self.pub_vel = rospy.Publisher("/cockroachVel_pull", Vector3, queue_size = 1)
         self.pub_pathNum = rospy.Publisher("/pathNum_pull", Vector3, queue_size = 1)
         self.pub_stop = rospy.Publisher("/cockroachFlag_pull",Vector3,queue_size = 1)
@@ -63,6 +67,9 @@ class Pursuit:
         self.pos = Point32()     # robot position
         self.ori = None     # robot orientation
 
+        self.push_pos = Point32()     # another robot position
+        self.push_ori = None     # another robot orientation
+
         self.path = Vector3()      # destination points
 
         # self.kp = 0.3
@@ -70,20 +77,38 @@ class Pursuit:
         # self.kd = -0.3
         self.kd = 2
         self.ki = 0.01
+        
+        ## Now Revising the PID Coefficient
+        self.kp = 1
+        self.kd = 0
+        self.ki = 0
 
 
         self.eta = None
 
-        # self.radiu = 0.05      # the dist from destination point that robot stop
         self.radiu = 0.05      # the dist from destination point that robot stop
+        # self.radiu = 0.01      # the dist from destination point that robot stop
         self.flag = False   # check if robot reach the destination point
 
         # for test :: to get the handle
         self.cube = None
         self.cube1 = None
 
+        # coef for angle in the middle. 
+        # self.coef_theta_diff = -0.25
+        # self.coef_theta_diff = 0
+        self.coef_theta_diff = -2
 
-    def getPos(self, msg):
+
+    def getPushPos(self, msg):
+        """
+        implement localization and getPath
+        """
+
+        self.push_pos = msg
+        self.push_ori = msg.z
+
+    def getPullPos(self, msg):
         """
         implement localization and getPath
         """
@@ -123,6 +148,20 @@ class Pursuit:
         # eta =math.atan(math.tan(math.atan2(vector_y, vector_x) - self.ori))
         return eta
 
+    def getMiddleEta(self, pose):     # TODO : refer to test_controller
+        """
+        get the eta between robot orientation and robot position to destination     TODO: how to get the delta orientation
+        :param pose: tracking position
+        :return: eta
+        """
+        vector_x = np.cos(self.push_ori) * (pose.x - self.push_pos.x) + np.sin(self.push_ori) * (pose.y - self.push_pos.y)
+        vector_y = -np.sin(self.push_ori) * (pose.x - self.push_pos.x) + np.cos(self.push_ori) * (pose.y - self.push_pos.y)
+        eta = math.atan2(vector_y, vector_x)
+        # vector_x = (pose.x - self.pos.x)
+        # vector_y = (pose.y - self.pos.y)
+        # eta =math.atan(math.tan(math.atan2(vector_y, vector_x) - self.ori))
+        return eta
+
     def if_goal_reached(self, pose):
         """
         check iff dist between robot and destination is less than limit
@@ -143,17 +182,27 @@ class Pursuit:
         else:
             if theta > 1.6:
                 theta = 3.14 - theta
+
+        # theta_diff is the angle in the middle
+        theta_diff = self.getMiddleEta(self.pos)
+        if theta_diff < 0:
+            if theta_diff < -1.6:
+                theta_diff = -3.14 - theta_diff
+        else:
+            if theta_diff > 1.6:
+                theta_diff = 3.14 - theta_diff
         
 
         if not self.if_goal_reached(self.path):
-            self.LCycleFreq = (BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef
-            self.RCycleFreq = (BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef
+            self.LCycleFreq = (BaseFreq + (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef + self.coef_theta_diff * theta_diff
+            self.RCycleFreq = (BaseFreq - (self.kp * theta + (theta - self.last_theta) * self.kd + self.ki * self.total_theta))*coef - self.coef_theta_diff * theta_diff
         
+            # print("Yoooooooooooooooo")
             # print("goal_num : ", self.path_num)
             # print("Error : ", theta)
             # print("goal : ", self.path)
-            # print("self.L_vel : ", self.LCycleFreq)
-            # print("self.R_vel : ", self.RCycleFreq)
+            print("self.L_vel : ", self.LCycleFreq)
+            print("self.R_vel : ", self.RCycleFreq)
         else:
             print("goal reached !!")
             if self.path_num == 30:
