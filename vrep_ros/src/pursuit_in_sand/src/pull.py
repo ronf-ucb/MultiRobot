@@ -75,7 +75,7 @@ class Pursuit:
         self.eta = None
 
         # self.radiu = 0.05      # the dist from destination point that robot stop
-        self.radiu = 0.01      # the dist from destination point that robot stop
+        self.radiu = 0.05      # the dist from destination point that robot stop
         self.flag = False   # check if robot reach the destination point
 
         # for test :: to get the handle
