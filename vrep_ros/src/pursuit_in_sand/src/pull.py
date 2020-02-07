@@ -217,6 +217,19 @@ class Pursuit:
         self.last_theta = theta
         self.total_theta += theta
 
+        # for limit the lowest velocity
+        # limit = 0.75
+        limit = 1.0
+        if self.LCycleFreq < limit and self.LCycleFreq >= 0:
+            self.LCycleFreq = limit
+        elif self.LCycleFreq > -limit and self.LCycleFreq <= 0:
+            self.LCycleFreq = -limit
+        if self.RCycleFreq < limit and self.RCycleFreq >= 0:
+            self.RCycleFreq = limit
+        elif self.RCycleFreq > -limit and self.RCycleFreq <= 0:
+            self.RCycleFreq = -limit
+
+
         vel = Vector3()
         vel.x = self.LCycleFreq
         vel.y = self.RCycleFreq
