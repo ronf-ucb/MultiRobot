@@ -20,8 +20,8 @@ LSignalName = "CycleLeft"
 RSignalName = "CycleRight"
 # BaseFreq = -1
 BaseFreq = -2
-# coef = 0.8
-coef = 1.0
+coef = 1.1
+# coef = 1.6
 
 state = 0
 obj = None
@@ -153,9 +153,9 @@ class Pursuit:
         """
         dx = self.pos.x - pose.x
         dy = self.pos.y - pose.y
-        dist = math.sqrt(dx ** 2 + dy ** 2)
+        self.dist = math.sqrt(dx ** 2 + dy ** 2)
         self.total_theta = 0
-        return dist < self.radiu
+        return self.dist < self.radiu
 
     def controller(self):
         # theta = self.getEta(self.path[self.path_num])
@@ -184,8 +184,8 @@ class Pursuit:
             # print("goal_num : ", self.path_num)
             # print("Error : ", theta)
             # print("goal : ", self.path)
-            print("self.L_vel : ", self.LCycleFreq)
-            print("self.R_vel : ", self.RCycleFreq)
+            # print("self.L_vel : ", self.LCycleFreq)
+            # print("self.R_vel : ", self.RCycleFreq)
             if  self.stop_sig == 1:
                 self.LCycleFreq = 0
                 self.RCycleFreq = 0
@@ -197,21 +197,11 @@ class Pursuit:
                 print("Bingo !!!")
             else:
                 self.path_num += 1
-
+        if self.dist < 0.08:
+            self.LCycleFreq = 1*self.LCycleFreq
+            self.RCycleFreq = 1*self.RCycleFreq
         self.last_theta = theta
         self.total_theta += theta
-
-        # for limit the lowest velocity
-        # limit = 0.75
-        limit = 1.0
-        if self.LCycleFreq < limit and self.LCycleFreq >= 0:
-            self.LCycleFreq = limit
-        elif self.LCycleFreq > -limit and self.LCycleFreq <= 0:
-            self.LCycleFreq = -limit
-        if self.RCycleFreq < limit and self.RCycleFreq >= 0:
-            self.RCycleFreq = limit
-        elif self.RCycleFreq > -limit and self.RCycleFreq <= 0:
-            self.RCycleFreq = -limit
 
 
         vel = Vector3()
