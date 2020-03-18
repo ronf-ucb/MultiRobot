@@ -23,9 +23,6 @@ import time
                     [1] positive is up from robot
                     [2] positive is away from robot'''
 
-'''TODO: Issue: adding an obstacle is not in sync with computeshortestpath -> infinite values are being propagated throug hand used for update start due to 
-    overconsistent nodes. Must somehow solve this timing issue and do things sequentially for the algorithm to work.'''
-
 WALLBACK = 150000
 SLOPETRAVEL = 2
 MINDISTANCE = .02
@@ -36,11 +33,11 @@ MAPDIMENSIONS = (80, 80, 2)
 
 class DStarAgent(object):
     def __init__(self, dataSub):
-        rospy.Subscriber(dataSub, String, self.getRobotData, queue_size = 1)
-        #rospy.Subscriber("/data3D", String, self.getData3D, queue_size = 1)
-        rospy.Subscriber("/proxyObstacle", Vector3, self.addObstacle, queue_size = 1)
         #rospy.Subscriber("/proxyCliff", cliff, self.addCliff, queue_size  = 100)
         #self.cliffPub = rospy.Publisher("/newCliff", cliff, queue_size = 100)
+        #rospy.Subscriber("/data3D", String, self.getData3D, queue_size = 1)
+        rospy.Subscriber(dataSub, String, self.getRobotData, queue_size = 1)
+        rospy.Subscriber("/proxyObstacle", Vector3, self.addObstacle, queue_size = 1)
         self.obstaclePub = rospy.Publisher("/newObstacle", Vector3, queue_size = 1)
         self.env = Environment(RESOLUTION, MAPDIMENSIONS, CLIFFTHRESHOLD)
         self.keyFactor = 0
@@ -61,14 +58,14 @@ class DStarAgent(object):
                 self.computeShortestPath() #update the map
                 ########### CHECK FOR OBSTACLE ##############
                 pos = self.env.robotPosition    
-                #cliffs = self.checkGround(pos)
-                #if pos in self.env.cliffs.keys():
-                #    cliffs = cliffs - self.env.cliffs[pos] #difference
-                #if len(cliffs) > 0:
-                #    print("NEW CLIFF DETECTED")
-                #    self.stopRobot()
-                #    self.manageCliff(pos, insert)
-                #    break
+                '''cliffs = self.checkGround(pos)
+                if pos in self.env.cliffs.keys():
+                    cliffs = cliffs - self.env.cliffs[pos] #difference
+                if len(cliffs) > 0:
+                    print("NEW CLIFF DETECTED")
+                    self.stopRobot()
+                    self.manageCliff(pos, insert)
+                    break'''
                 obstacleAndLocation = self.checkProximity()
                 if obstacleAndLocation[0]:
                     self.stopRobot()
@@ -87,20 +84,20 @@ class DStarAgent(object):
                     dots += [self.env.dotProduct((n[0] - pos[0], n[1] - pos[1]),v)]
 
                 ############## UPDATE POSITION #############
-                i = dots.index(max(dots))
+                '''i = dots.index(max(dots))
                 if costs[i] == np.inf and neighbors[i] not in self.obstacles:
                     #if the direction we are facing has infinite value and is a cliff
                     self.updateStart((0,0), "back")
-                else:
-                    minimum = min(costs)
-                    indices = [i for i,x in enumerate(costs) if x == minimum]
-                    if len(indices) == 0:
-                        self.updateStart(neighbors[indices[0]])
-                    else:
-                        dots = [dots[i] for i in indices]
-                        candidates = [neighbors[i] for i in indices]
-                        minPoint = candidates[dots.index(max(dots))]
-                        self.updateStart(minPoint)
+                else:'''
+                minimum = min(costs)
+                indices = [i for i,x in enumerate(costs) if x == minimum]
+                '''if len(indices) == 0:
+                    self.updateStart(neighbors[indices[0]])
+                else:'''
+                dots = [dots[i] for i in indices]
+                candidates = [neighbors[i] for i in indices]
+                minPoint = candidates[dots.index(max(dots))]
+                self.updateStart(minPoint)
 
     def manageObstacle(self, location):
         ######### DETECTED OBJECT. REMOVE FROM PQ. UPDATE COSTS OF NEIGHBORS ###########
