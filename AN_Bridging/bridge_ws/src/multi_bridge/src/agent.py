@@ -1,59 +1,28 @@
+#! /usr/bin/env python
+
 import numpy as np 
 import pytorch as torch
 import pytorch.nn as nn
 import math 
 from network import Network
 import rospy
-from std_msgs.msg import String
+from std_msgs.msg import String, Vector3
 
 # Collaborative agent in multi-agent framework. Initiates a class that contains:
     # actor network
     # critic network
     # actor network copy for KL divergence calculations
 
+'''
+ASSUMPTION: direction of movement is in the x-directions
+'''
+
 #Supports MADDPG with TRPO inspiration and optimizations in better scaling towards larger multiagent systems and stability
 
-#TODO: ensure that the frequency in which we make exchanges is even ie. the state action reward state tuples are consistent in terms of timing 
-
-actPars = {'state_n': ,
-            'u_n':, 
-            'output_n': ,
-            'hidden': ,
-            'depth': ,
-            'activation': ,
-            'preprocess':,
-            'postprocess'
-            'epochs':,
-            'loss_fnc:'
-            }
-criticPars = {'prob': False,
-            'sigma':, 
-            'state_n':  ,
-            'output_n': ,
-            'hidden': ,
-            'depth':,
-            'activation':,
-            'preprocess': ,
-            'postprocess':,
-            'epochs':,
-            'loss_fnc': ,
-            'discrete': 
-            }
-trainPars {'alpha1': ,
-            'alpha2': ,
-            'alpha3': ,
-            'lambda': ,
-            'batch': ,
-            'horizon': ,
-            'buffer': ,
-            'explore': ,
-            'lr': ,
-            }
-stateSub = "state"
-
+'''TODO: Finish LOOKING OVER EVERYTHING'''
 
 class agent(nn.Module):
-    def _init(self, actorParams, criticParams, atrainParams, ctrainParams):
+    def _init(self, actorParams, criticParams, atrainParams, ctrainParams, ROSparams):
         self.actor = None 
         self.critic = None 
         self.prevActor = None
@@ -83,13 +52,18 @@ class agent(nn.Module):
 
         self.prevState = None
         self.prevAction = None 
-n
-        rospy.Subscriber(stateSub, String, self.receiveState, queue_size = 1) 
-        self.aPub = rospy.Publisher(actionPub, String, queue_size = 1)
+
+        stateSub = ROSparams['stateSub']
+        subQ = ROSparams['subQueue']
+        actionPub = ROSparams['actionPub']
+        pubQ = ROSparam['pubQueue']
+
+        rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
+        self.aPub = rospy.Publisher(actionPub, Vector3, queue_size = pubQ)
+
+        self.goalPosition = None #SET THIS TO BE THE MIDPOINT OF THE NEXT PLATFORM  WITH THE CURRENT Z COORD OF THE ROBOTS
 
 
-        #BEGIN TRAINING THE AGENT!
-        self.train()
 
     def receiveState(self, message):
         #get new state from v-rep using ROS. put that into the experience
@@ -132,7 +106,7 @@ n
         return np.random.normal(mean, var)
 
     
-    def rewardFunction(state, observations):
+    def rewardFunction(prevPosition, state, observations, action, timestep):
         #given a state and observations of the other n-1 agents, calculate the reward
         #state: 1 element: height of end of ravine to beginning
         #3 element: relative coordinates from the current fixed robot (could be 0,0,0)
@@ -141,9 +115,11 @@ n
         #3 elements: angles relative to normal direction for pitch, roll, yaw each robot 
 
         #observations are passed in as true state of other agents with Gaussian noise added relative to distance from agent 
-
+        '''TODO: incorporate the action and timestep into reward '''
         reward = 0
-        reward += (state[1] + state[2] + state[3])*self.weight_loc #assume the coordinate frame is positive in direction towards end of bridge
+        currDelta = sum([abs(state[i+1] - goalState[i]) for i in range(3)])
+        prevDelta = sum([abs(prevPosition[i] - goalState[i]) for i in range(3)])
+        reward += (prevDelta - currDelta) *self.weight_loc #assume the coordinate frame is positive in direction towards end of bridge
         reward += (state[4] + 2*state[5] + 4*state[6])*self.weight_phase + self.base_reward #phase reward (binary)
         reward += (state[8] + state[9] + state[10]) * self.weight_angle #orientation reward 
         for state in observations:
@@ -158,9 +134,6 @@ n
 
         
     def train(self):
-        #TODO: calculate the targets for the value function
-        #TODO: Gaussiaan noise into network inputs
-        #TODO: keep track of training and testing losses
         choices = np.random.choice(0, min(self.expSize, self.dataSize), batch_size) 
         data = self.experience[choices]
         targets = #calculate the VALUE of states!
@@ -176,4 +149,3 @@ n
             '''We have the reward, state, next State and action associated. Calculate neew probability of doing that action. doesn't change the fact that this action will yield same results'''
             actions = self.experience[:, self.state_n: self.state_n + self.u_n]
             self.actor.train(states, actions, advantage)
-        

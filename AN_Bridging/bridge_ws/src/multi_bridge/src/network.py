@@ -6,20 +6,22 @@ import torch.optim as optim
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, QuantileTransformer
 
+'''TODO: FINISH LOOKING AT ALL OF THIS'''
+
 class Network(nn.Module):
     def __init__(self, netParams, trainParams):
         super(Network,self).__init__()
         self.state_n = netParams['state_n']
-        self.u_n = netParams['action_n']
-        self.in_n = self.state_n + self.u_n
+
+        self.in_n = self.state_n
         self.out_n = netParams['output_n']
+
         self.prob = netParams['prob'] #denotes whether or not this is a PNN
         self.actor_var = netParams['sigma']
         self.hidden_w = nParams['hidden']
         self.depth = netParams['depth']
         self.activation = netParams['activation']
         self.d = netParams['dropout']
-        self.discrete = netParam['discrete']
 
         if self.prob:
             self.out_n *= 2
@@ -67,6 +69,7 @@ class Network(nn.Module):
 
     def postProcess(self, outputs) {
         #depeneds what we are trying to do 
+        '''TODO: Finish this'''
         return outputs
     }
     def forward(self, inputs){
@@ -109,7 +112,7 @@ class Network(nn.Module):
                 std = out[int(self.out_n/2)p
                 prob = np.exp(-(1/2)*np.divide(np.square(means - outputs), std))
                 prob = 1/((2*np.pi)**(means.shape[0]) *np.prod(std)) ** (1/2)
-                gradient = -np.sum(prob*advantages)
-                gradient.backward()
+                gradient = -np.sum(np.log(prob)*advantages) '''TODO: Check that these are supposed to be logProbs'''
+                gradient.backward() 
                 self.optimizer.step()
     }
