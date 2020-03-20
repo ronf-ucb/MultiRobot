@@ -1,9 +1,11 @@
-import pytorch as torch 
-import pytorch.nn as nn
-import numpy 
+#! /usr/bin/env python
+
+import torch
+import torch.nn as nn
+import numpy as np
 import matplotlib.pyplot as plt 
 import torch.optim as optim
-
+from collections import OrderedDict
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, QuantileTransformer
 
 '''TODO: FINISH LOOKING AT ALL OF THIS'''
@@ -12,36 +14,32 @@ class Network(nn.Module):
     def __init__(self, netParams, trainParams):
         super(Network,self).__init__()
         self.state_n = netParams['state_n']
-
         self.in_n = self.state_n
         self.out_n = netParams['output_n']
-
         self.prob = netParams['prob'] #denotes whether or not this is a PNN
-        self.actor_var = netParams['sigma']
-        self.hidden_w = nParams['hidden']
+        self.noise_in = netParams['sigma'] 
+        self.hidden_w = netParams['hidden']
         self.depth = netParams['depth']
         self.activation = netParams['activation']
         self.d = netParams['dropout']
-
-        if self.prob:
-            self.out_n *= 2
-
         self.lr = trainParams['lr']
         self.pre = netParams['preprocess']
         self.post = netParams['postprocess']
         self.epochs = netParams['epochs']
         loss = netParams['loss_fnc']
+
+        if self.prob:
+            self.out_n *= 2
+
+        assert loss == "policy_gradient" or loss == "MSE"
+
         if loss == "policy_gradient":
             self.loss_fnc = None
         elif loss == "MSE":
             self.loss_fnc = nn.MSELoss()
-        else:
-            assert False
 
         self.scalarInput = StandardScaler() #or any of the other scalers...look into them 
         self.scalarOutput = StandardScaler()
-                
-        self.optimizer =  optim.Adam(super(Network, self).parameters(), lr=self.lr)
 
         layers = []
         layers.append(('dynm_input_lin', nn.Linear(
@@ -55,39 +53,45 @@ class Network(nn.Module):
 
 
         layers.append(('dynm_out_lin', nn.Linear(self.hidden_w, self.out_n)))
-        self.features = nn.Sequential(OrderedDict([*layers]))
+        self.features = nn.Sequential(OrderedDict(layers))
+
+        self.optimizer =  optim.Adam(super(Network, self).parameters(), lr=self.lr)
 
     
-    def preProcess(self, inputs, outputs) {
+    def preProcess(self, inputs, outputs):
         #normalize the input vectors
-        self.scalarInput.fit(inputs)
-        norm = self.scalarInput.transform(inputs)
+        norm = self.preProcessIn(inputs)
         self.scalarOutput.fit(outputs)
         normOut = self.scalarOutput.transform(outputs)
         return norm, normOut
-    }
+    
+    def preProcessIn(self, inputs):
+        self.scalarInput.fit(inputs)
+        norm = self.scalarInput.transform(inputs)
+        return norm
 
-    def postProcess(self, outputs) {
+    def postProcess(self, outputs):
         #depeneds what we are trying to do 
         '''TODO: Finish this'''
         return outputs
-    }
-    def forward(self, inputs){
-        x = self.features(input)
+    
+    def forward(self, inputs):
+        x = self.features(inputs)
         x = self.postProcess(x)
         return x 
-    }
+    
 
-    def predict(self, input){
-        input = self.preProcess(input)
-        self.eval()
+    def predict(self, input):
+        if self.pre:
+            input = self.preProcessIn(input)
+        input = torch.FloatTensor(input)
         x = self.features(input)
-        prediction = self.postProcess(x)
-        return prediction
+        if self.post:
+            return self.postProcess(x)
+        return x
 
-    }
 
-    def train(self, inputs, outputs, advantages = None) {
+    def train_cust(self, inputs, outputs, advantages = None):
         #experience replay is kept in the agent.py code 
         #advantage function: we need to only estimate the value function. This is directl put in 
         #policy gradient: we pass in a SEQUENCE of state action pairs.
@@ -98,8 +102,9 @@ class Network(nn.Module):
         #advantage: always advantage values or none depending if actor or critic
         self.train()
         for i in range(self.epochs):
-            normIn, normOut = self.preProcess(inputs ,outputs)
-            out = self.forward(normIn)
+            if self.pre:
+                inputs, outputs = self.preProcess(inputs ,outputs)
+            out = self.predict(inputs)
             if self.loss_fnc != None: #MSELoss
                 assert advantages == None 
                 loss = self.loss_fnc(out, outputs)
@@ -108,11 +113,11 @@ class Network(nn.Module):
             else: #policy gradient
                 #each row is a sample. Outputs represent our actions!
                 #we compute the log probabilities that we would execute those actions given our current policy
-                means = out[: int(self.out_n/2)]
-                std = out[int(self.out_n/2)p
-                prob = np.exp(-(1/2)*np.divide(np.square(means - outputs), std))
-                prob = 1/((2*np.pi)**(means.shape[0]) *np.prod(std)) ** (1/2)
-                gradient = -np.sum(np.log(prob)*advantages) '''TODO: Check that these are supposed to be logProbs'''
+                means = out[:, :int(self.out_n/2)]
+                std = out[:, int(self.out_n/2):]
+                outputs = torch.FloatTensor(outputs)
+                prob = torch.exp(-(1/2)*(((means - outputs) ** 2 )/  std))
+                prob = (1/((2*np.pi)**(1/2) * std) * prob)
+                gradient = -torch.sum(torch.log(prob)*advantages)
                 gradient.backward() 
                 self.optimizer.step()
-    }
