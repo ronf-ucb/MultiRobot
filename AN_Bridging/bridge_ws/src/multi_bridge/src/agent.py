@@ -6,7 +6,7 @@ import torch.nn as nn
 import math 
 from network import Network
 import rospy
-from std_msgs.msg import String
+from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
 import vrep
 
@@ -29,6 +29,7 @@ class Agent():
         pubQ = ROSparams['pubQueue']
         self.agents_n = ROSparams['numAgents']
         self.delta_t = ROSparams['delta_t']
+        self.vrep_sub = rospy.Subscriber("/failure", Int8, self.receiveStatus, queue_size = 1)
 
         rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
         self.aPub = rospy.Publisher(self.actionPub, Vector3, queue_size = pubQ)
@@ -67,6 +68,13 @@ class Agent():
         self.startDistance = 0
         while(True):
             x = 1+1
+        
+    def receiveStatus(self, message):
+        if message.data == 1:
+            self.prevState = None 
+            self.prevAction = None
+            self.goalPosition = 0
+            self.startDistance = 0 
         
 
 
@@ -120,6 +128,9 @@ class Agent():
 
     
     def rewardFunction(self, state, action):
+        '''TODO: Introduce deduction in reward for:
+                1. using the rope
+                2. falling down'''
         state = state.ravel()
         prevState = self.prevState.ravel()
         robState = state[:self.state_n]
