@@ -25,13 +25,13 @@ class Agent():
         rospy.init_node('Dummy', anonymous = True)
         stateSub = ROSparams['stateSub']
         subQ = ROSparams['subQueue']
-        actionPub = ROSparams['actionPub']
+        self.actionPub = ROSparams['actionPub']
         pubQ = ROSparams['pubQueue']
         self.agents_n = ROSparams['numAgents']
         self.delta_t = ROSparams['delta_t']
 
         rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
-        self.aPub = rospy.Publisher(actionPub, Vector3, queue_size = pubQ)
+        self.aPub = rospy.Publisher(self.actionPub, Vector3, queue_size = pubQ)
 
         self.actor = None 
         self.critic = None 
@@ -46,6 +46,7 @@ class Agent():
         self.prob = actorParams['prob']
 
         self.state_n = criticParams['state_n']
+        self.own_n = actorParams['own_n']
         self.u_n = actorParams['output_n']
         self.sigmoid = nn.Sigmoid()
         replayFeatures = 2*self.state_n + self.u_n + 1 
@@ -64,14 +65,13 @@ class Agent():
 
         self.goalPosition = 0 
         self.startDistance = 0
+        while(True):
+            x = 1+1
         
 
 
     def receiveState(self, message):
-        #get new state from v-rep using ROS. put that into the experience
         floats = vrep.simxUnpackFloats(message.data)
-        #when you receive a state, send the action as well and save it in experience replay
-        #that way, we maintain some form of uniformity in the frequency of sampling
         self.goalPosition = np.array(floats[-3:])
         state = (np.array(floats[:self.state_n])).reshape(1,-1)
         if self.startDistance == 0:
@@ -86,21 +86,23 @@ class Agent():
             self.dataSize += 1
         self.prevState = state
         self.prevAction = action.reshape(1,-1)
+        self.train()
         return 
         
     
     def sendAction(self, state):
         out = self.actor.predict(state)
-        mean = out.narrow(1, 0, 3).detach().numpy().ravel()
+        mean = (out.narrow(1, 0, self.u_n).detach()).numpy().ravel()
         if self.prob:
-            var = self.sigmoid(out.narrow(1, 3, 3)).detach().numpy().ravel()
+            var = (out.narrow(1, self.u_n, self.u_n)).detach().numpy().ravel()
             action = self.sample(mean, var) + np.random.normal(0, self.exploration, self.u_n)
             action += np.random.normal(0, self.exploration, self.u_n)
-            action[2] = np.round(action[2])
             msg = Vector3()
             msg.x = action[0]
             msg.y = action[1]
-            msg.z = action[2]
+            if (self.u_n > 2):
+                action[2] = np.round(action[2])
+                msg.z = action[2]
             self.aPub.publish(msg)
         else:
             i = np.random.random()
@@ -133,13 +135,12 @@ class Agent():
         vector = self.goalPosition - prevPosition
         norm = np.sqrt(np.sum(np.square(vector)))
         vector = vector / norm
-        R_vel = np.sum(deltas * vector) #dot product
+        R_vel = np.sum(deltas * vector)
 
         R_agents = 0
-        for i in range(self.agents_n):
-            startIndex = -3 * (self.agents_n - i) + self.state_n
-            endIndex = -3 * (self.agents_n - i - 1) + self.state_n
-            position = state[startIndex: endIndex]
+        for i in range(self.agents_n - 1):
+            startIndex = self.own_n + 4*i
+            position = state[startIndex: startIndex + 3]
             prevPosition = np.array(prevState[startIndex: startIndex+3])
             deltas = self.goalPosition - position
 
@@ -149,27 +150,27 @@ class Agent():
             vector = self.goalPosition - prevPosition
             norm = np.sqrt(np.sum(np.square(vector)))
             vector = vector / norm
-            R_agents += np.sum(deltas * vector) #dot product    
 
-        return self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents
+            R_agents += np.sum(deltas * vector) #dot product  
+
+        reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents
+        return reward
 
         
     def train(self):
-        while (True):
-            if self.dataSize >= self.horizon:
-                choices = np.random.choice(min(self.expSize, self.dataSize), self.batch_size) 
-                data = self.experience[choices]
-                r = data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1] #ASSUMING S, A, R, S' structure for experience 
-                targets = torch.from_numpy(r) + self.discount * self.critic.predict(data[:, -self.state_n: ])
-                self.critic.train_cust(data[:, :self.state_n], targets)
+        if self.dataSize >= self.horizon:
+            choices = np.random.choice(min(self.expSize, self.dataSize), self.batch_size) 
+            data = self.experience[choices]
+            r = data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1] #ASSUMING S, A, R, S' structure for experience 
+            targets = torch.from_numpy(r) + self.discount * self.critic.predict(data[:, -self.state_n: ])
+            self.critic.train_cust(data[:, :self.state_n], targets)
 
-                index = np.random.randint(0, self.experience.shape[0] - self.horizon)
-                data = self.experience[index: index + self.horizon]
-                states = data[:,:self.state_n]
-                statePrime = data[:, -self.state_n:]
-                valueS = self.critic.predict(states)
-                valueSPrime = self.critic.predict(statePrime)
-                advantage = torch.from_numpy(data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1]) + self.discount*valueSPrime + valueS
-                '''We have the reward, state, next State and action associated. Calculate neew probability of doing that action. doesn't change the fact that this action will yield same results'''
-                actions = data[:, self.state_n: self.state_n + self.u_n]
-                self.actor.train_cust(states, actions, advantage)
+            index = np.random.randint(0, self.experience.shape[0] - self.horizon)
+            data = self.experience[index: index + self.horizon]
+            states = data[:,:self.state_n]
+            statePrime = data[:, -self.state_n:]
+            valueS = self.critic.predict(states)
+            valueSPrime = self.critic.predict(statePrime)
+            advantage = torch.from_numpy(data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1]) + self.discount*valueSPrime + valueS
+            actions = data[:, self.state_n: self.state_n + self.u_n]
+            self.actor.train_cust(states, actions, advantage)

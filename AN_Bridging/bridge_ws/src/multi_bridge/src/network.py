@@ -27,6 +27,7 @@ class Network(nn.Module):
         self.post = netParams['postprocess']
         self.epochs = netParams['epochs']
         loss = netParams['loss_fnc']
+        self.sigmoid = nn.Sigmoid()
 
         if self.prob:
             self.out_n *= 2
@@ -86,20 +87,14 @@ class Network(nn.Module):
             input = self.preProcessIn(input)
         input = torch.FloatTensor(input)
         x = self.features(input)
-        if self.post:
-            return self.postProcess(x)
+        if self.prob:
+            mean = x.narrow(1, 0, self.out_n/2)
+            var = self.sigmoid(x.narrow(1, self.out_n/2, self.out_n/2))
+            x = torch.cat((mean, var), dim = 1)
         return x
 
 
     def train_cust(self, inputs, outputs, advantages = None):
-        #experience replay is kept in the agent.py code 
-        #advantage function: we need to only estimate the value function. This is directl put in 
-        #policy gradient: we pass in a SEQUENCE of state action pairs.
-            #we pass in our respective state to the network to output a mean and variance
-            #we also have actions that were taken beforehand with respective advantages
-        #inputs: always sequence of states
-        #outputs: can be state or action space depending on critic or actor network 
-        #advantage: always advantage values or none depending if actor or critic
         self.train()
         for i in range(self.epochs):
             if self.pre:
@@ -112,7 +107,6 @@ class Network(nn.Module):
                 self.optimizer.step()
             else: #policy gradient
                 #each row is a sample. Outputs represent our actions!
-                #we compute the log probabilities that we would execute those actions given our current policy
                 means = out[:, :int(self.out_n/2)]
                 std = out[:, int(self.out_n/2):]
                 outputs = torch.FloatTensor(outputs)

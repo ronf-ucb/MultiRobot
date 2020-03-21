@@ -12,7 +12,8 @@ from agent import Agent
 
 GAMMA = .9
 
-actPars = {'state_n': 9,
+actPars = {'state_n': 12,
+            'own_n': 7,
             'output_n': 3,
             'prob': True,
             'hidden': 100,
@@ -27,7 +28,7 @@ actPars = {'state_n': 9,
             }
 criticPars = {
             'sigma': 1, 
-            'state_n': 9,
+            'state_n': 12,
             'output_n': 1,
             'prob': False,
             'hidden': 100,
@@ -41,7 +42,7 @@ criticPars = {
             'prob' : False
             }
 actorTrainPars = {'alpha1': 2,
-            'alpha2': 1,
+            'alpha2': 2,
             'lambda': .5,
             'horizon': 16,
             'buffer': 1000,
@@ -51,7 +52,7 @@ actorTrainPars = {'alpha1': 2,
             }
 
 criticTrainPars = {
-            'batch': 32,
+            'batch': 16,
             'lr': .0000001,
             'gamma': GAMMA
 }
@@ -61,8 +62,8 @@ ROSparams = {'stateSub': "/tanker",
                 'actionPub': "/tankerSubscribe",
                 'pubQueue': 1,
                 'delta_t': .05,
-                'numAgents': 1
+                'numAgents': 2
 }
 
+
 bridger = Agent(actPars, criticPars, actorTrainPars, criticTrainPars, ROSparams)
-bridger.train()
