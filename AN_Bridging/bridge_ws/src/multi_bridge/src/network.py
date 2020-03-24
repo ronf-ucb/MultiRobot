@@ -8,8 +8,6 @@ import torch.optim as optim
 from collections import OrderedDict
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, QuantileTransformer
 
-'''TODO: FINISH LOOKING AT ALL OF THIS'''
-
 class Network(nn.Module):
     def __init__(self, netParams, trainParams):
         super(Network,self).__init__()
@@ -96,6 +94,7 @@ class Network(nn.Module):
 
     def train_cust(self, inputs, outputs, advantages = None):
         self.train()
+        '''TODO: no epochs are being taking into account due to early return!!!'''
         for i in range(self.epochs):
             if self.pre:
                 inputs, outputs = self.preProcess(inputs ,outputs)
@@ -105,6 +104,7 @@ class Network(nn.Module):
                 loss = self.loss_fnc(out, outputs)
                 loss.backward()
                 self.optimizer.step()
+                return loss
             else: #policy gradient
                 #each row is a sample. Outputs represent our actions!
                 means = out[:, :int(self.out_n/2)]
@@ -115,3 +115,5 @@ class Network(nn.Module):
                 gradient = -torch.sum(torch.log(prob)*advantages)
                 gradient.backward() 
                 self.optimizer.step()
+                return gradient
+

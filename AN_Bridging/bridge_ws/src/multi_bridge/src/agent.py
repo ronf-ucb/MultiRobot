@@ -9,63 +9,71 @@ import rospy
 from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
 import vrep
+import matplotlib.pyplot as plt
 
 # Collaborative agent in multi-agent framework. Initiates a class that contains:
     # actor network
     # critic network
     # actor network copy for KL divergence calculations
 
-'''
-ASSUMPTION: direction of movement is in the x-directions'''
-
 #Supports MADDPG with TRPO inspiration and optimizations in better scaling towards larger multiagent systems and stability
 
 class Agent():
-    def __init__(self, actorParams, criticParams, atrainParams, ctrainParams, ROSparams):
-        rospy.init_node('Dummy', anonymous = True)
-        stateSub = ROSparams['stateSub']
-        subQ = ROSparams['subQueue']
-        self.actionPub = ROSparams['actionPub']
-        pubQ = ROSparams['pubQueue']
-        self.agents_n = ROSparams['numAgents']
-        self.delta_t = ROSparams['delta_t']
+    def __init__(self, params, alg):
+        self.alg = alg
+        criticParams = params['criticParams']
+        criticTrain = params['criticTrain']
+        ROSParams = params['ROS']
+
+        if alg == "CUST_MADDPG_OPT":
+            actorParams = params['actorParams']
+            actorTrain = params['actorTrain']
+    
+            self.discount = actorTrain['gamma']
+            self.weight_loc = actorTrain['alpha1']
+            self.weight_vel = actorTrain['alpha2']
+            self.weight_agents = actorTrain['lambda']
+            self.horizon = actorTrain['horizon']
+            self.expSize = actorTrain['buffer']
+            self.exploration = actorTrain['explore']
+
+            self.own_n = actorParams['own_n']
+            self.u_n = actorParams['output_n']
+            self.prob = actorParams['prob']
+
+            self.actor = Network(actorParams, actorTrain)
+
+        self.critic = Network(criticParams, criticTrain)
+
+        stateSub = ROSParams['stateSub']
+        subQ = ROSParams['subQueue']
+        self.actionPub = ROSParams['actionPub']
+        pubQ = ROSParams['pubQueue']
+        self.agents_n = ROSParams['numAgents']
+        self.delta_t = ROSParams['delta_t']
         self.vrep_sub = rospy.Subscriber("/failure", Int8, self.receiveStatus, queue_size = 1)
-
-        rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
         self.aPub = rospy.Publisher(self.actionPub, Vector3, queue_size = pubQ)
+        rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
 
-        self.actor = None 
-        self.critic = None 
-        self.prevActor = None
-        self.discount = atrainParams['gamma']
-
-        self.weight_loc = atrainParams['alpha1']
-        self.weight_vel = atrainParams['alpha2']
-        self.weight_agents = atrainParams['lambda']
-        self.batch_size = ctrainParams['batch']
-        self.horizon = atrainParams['horizon']
-        self.prob = actorParams['prob']
-
+        self.batch_size = criticTrain['batch']
         self.state_n = criticParams['state_n']
-        self.own_n = actorParams['own_n']
-        self.u_n = actorParams['output_n']
-        self.sigmoid = nn.Sigmoid()
+
         replayFeatures = 2*self.state_n + self.u_n + 1 
-
-        self.expSize = atrainParams['buffer']
         self.experience = np.zeros((self.expSize, replayFeatures))
-
-        self.exploration = atrainParams['explore']
         self.dataSize = 0 #number of data tuples we have accumulated so far
-
-        self.actor = Network(actorParams, atrainParams)
-        self.critic = Network(criticParams, ctrainParams)
+        self.sigmoid = nn.Sigmoid()
 
         self.prevState = None
         self.prevAction = None 
 
         self.goalPosition = 0 
         self.startDistance = 0
+        self.fail = False
+        self.ropes = [0,1,2]
+
+        self.criticLoss = []
+        self.actorLoss = []
+
         while(True):
             x = 1+1
         
@@ -75,9 +83,9 @@ class Agent():
             self.prevAction = None
             self.goalPosition = 0
             self.startDistance = 0 
+        else:
+            self.fail = False
         
-
-
     def receiveState(self, message):
         floats = vrep.simxUnpackFloats(message.data)
         self.goalPosition = np.array(floats[-3:])
@@ -97,7 +105,6 @@ class Agent():
         self.train()
         return 
         
-    
     def sendAction(self, state):
         out = self.actor.predict(state)
         mean = (out.narrow(1, 0, self.u_n).detach()).numpy().ravel()
@@ -122,15 +129,13 @@ class Agent():
             assert False            
         return action
 
-    
     def sample(self, mean, var):
         return np.random.normal(mean, var)
 
-    
     def rewardFunction(self, state, action):
-        '''TODO: Introduce deduction in reward for:
-                1. using the rope
-                2. falling down'''
+        if self.fail:
+            return -10
+
         state = state.ravel()
         prevState = self.prevState.ravel()
         robState = state[:self.state_n]
@@ -163,25 +168,37 @@ class Agent():
             vector = vector / norm
 
             R_agents += np.sum(deltas * vector) #dot product  
+        R_rope = -2 if ((self.u_n == 3) and (action[-1] in self.ropes)) else 0
 
-        reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents
+        reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents + R_rope
         return reward
 
-        
     def train(self):
-        if self.dataSize >= self.horizon:
+        if self.dataSize >= self.batch_size:
+            #WE DO THIS PART REGARDLESS! TODO: when adding in new functionality, change this to conditional!
             choices = np.random.choice(min(self.expSize, self.dataSize), self.batch_size) 
             data = self.experience[choices]
             r = data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1] #ASSUMING S, A, R, S' structure for experience 
             targets = torch.from_numpy(r) + self.discount * self.critic.predict(data[:, -self.state_n: ])
-            self.critic.train_cust(data[:, :self.state_n], targets)
+            loss = self.critic.train_cust(data[:, :self.state_n], targets)
+            self.criticLoss.append(loss)
 
-            index = np.random.randint(0, self.experience.shape[0] - self.horizon)
-            data = self.experience[index: index + self.horizon]
-            states = data[:,:self.state_n]
-            statePrime = data[:, -self.state_n:]
-            valueS = self.critic.predict(states)
-            valueSPrime = self.critic.predict(statePrime)
-            advantage = torch.from_numpy(data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1]) + self.discount*valueSPrime + valueS
-            actions = data[:, self.state_n: self.state_n + self.u_n]
-            self.actor.train_cust(states, actions, advantage)
+            if self.alg == "CUST_MADDPG_OPT":
+                index = np.random.randint(0, self.experience.shape[0] - self.horizon)
+                data = self.experience[index: index + self.horizon]
+                states = data[:,:self.state_n]
+                statePrime = data[:, -self.state_n:]
+                valueS = self.critic.predict(states)
+                valueSPrime = self.critic.predict(statePrime)
+                advantage = torch.from_numpy(data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1]) + self.discount*valueSPrime + valueS
+                actions = data[:, self.state_n: self.state_n + self.u_n]
+                loss = self.actor.train_cust(states, actions, advantage)
+                self.actorLoss.append(loss)
+    
+    def plotLoss(self):
+        plt.plot(range(len(self.criticLoss)), self.criticLoss)
+        plt.title("Critic Loss over Iterations")
+        plt.show()
+        plt.plot(range(len(self.actorLoss)), self.actorLoss)
+        plt.title("Actor Loss over Iterations")
+        plt.show()
