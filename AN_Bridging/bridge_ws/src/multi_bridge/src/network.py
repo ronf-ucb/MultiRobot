@@ -94,6 +94,7 @@ class Network(nn.Module):
 
     def train_cust(self, inputs, outputs, advantages = None):
         self.train()
+        self.optimizer.zero_grad()
         lossTot = 0
         for i in range(self.epochs):
             if self.pre:

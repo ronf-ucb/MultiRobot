@@ -11,14 +11,16 @@ from geometry_msgs.msg import Vector3
 from agent import Agent
 from customAgent import CustomAgent 
 from MADDPGAgent import MADDPGAgent 
+from centralQ import CentralQ
 
 GAMMA = .9
 
 algs = {
     1: "CUST_MADDPG_OPT",
-    2: "MADDPG"
+    2: "MADDPG",
+    3: "CENTRAL_Q", #REMINDER: if choosing 3, make sure to only run the bridgeAgent.py in the launch file
 }
-ALGORITHM = 2
+ALGORITHM = 3
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
@@ -120,6 +122,38 @@ if description == "MADDPG":
                             'numAgents': 2}
     params = {"actorParams": actPars, "valueParams": valuePars, "actorTrain": actorTrainPars, "valueTrain": valueTrainPars, "ROS": ROSparams}
     bridger = MADDPGAgent(params)
+if description == "CENTRAL_Q":
+    valuePars = {'prob': False,
+                'sigma': 1, #relative 
+                'state_n': 11,
+                'output_n': 84, #-2,0,2 for each 4 legs plus 3 actions where corresponds: stop and unhook, stop and hook front, stop and hook back
+                'in_n': 11,
+                'hidden': 100,
+                'depth': 2,
+                'activation': nn.ReLU(),
+                'preprocess': False,
+                'postprocess': True,
+                'epochs': 1,
+                'loss_fnc': "MSE",
+                'dropout': .10 }             
+    valueTrainPars = {
+                'batch': 32,
+                'lr': .00001,
+                'gamma': GAMMA,
+                'alpha1': 2,
+                'alpha2': 2,
+                'lambda': 2,
+                'buffer': 1000,
+                'explore': .9, }
+    ROSparams = {'stateSub': "/bridger" ,
+                'subQueue': 1,
+                'actionPub': "/bridgerSubscribe",
+                'pubQueue': 1,
+                'tankPub': "tankerSubscribe",
+                'delta_t': .05,
+                'numAgents': 2}
+    params = { "valueParams": valuePars, "valueTrain": valueTrainPars, "ROS": ROSparams}
+    bridger = CentralQ(params)
 
 while(True):
     x = 1+1

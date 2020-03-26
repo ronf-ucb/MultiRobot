@@ -18,24 +18,24 @@ import matplotlib.pyplot as plt
 
 class Agent(object):
     def __init__(self, params):
-        valueParams = params['valueParams']
-        valueTrain = params['valueTrain']
-        ROSParams = params['ROS']
+        self.valueParams = params['valueParams']
+        self.valueTrain = params['valueTrain']
+        self.ROSParams = params['ROS']
 
-        self.valueNet = Network(valueParams, valueTrain)
+        self.valueNet = Network(self.valueParams, self.valueTrain)
 
-        stateSub = ROSParams['stateSub']
-        subQ = ROSParams['subQueue']
-        self.actionPub = ROSParams['actionPub']
-        pubQ = ROSParams['pubQueue']
-        self.agents_n = ROSParams['numAgents']
-        self.delta_t = ROSParams['delta_t']
+        stateSub = self.ROSParams['stateSub']
+        subQ = self.ROSParams['subQueue']
+        self.actionPub = self.ROSParams['actionPub']
+        pubQ = self.ROSParams['pubQueue']
+        self.agents_n = self.ROSParams['numAgents']
+        self.delta_t = self.ROSParams['delta_t']
         self.vrep_sub = rospy.Subscriber("/failure", Int8, self.receiveStatus, queue_size = 1)
         self.aPub = rospy.Publisher(self.actionPub, Vector3, queue_size = pubQ)
         rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
 
-        self.batch_size = valueTrain['batch']
-        self.state_n = valueParams['state_n']
+        self.batch_size = self.valueTrain['batch']
+        self.state_n = self.valueParams['state_n']
 
         self.dataSize = 0 #number of data tuples we have accumulated so far
         self.sigmoid = nn.Sigmoid()
@@ -63,7 +63,7 @@ class Agent(object):
         out = self.actor.predict(state)
         mean = (out.narrow(1, 0, self.u_n).detach()).numpy().ravel()
         msg = Vector3()
-        if self.prob:
+        if self.prob: #probabilistic policy
             var = (out.narrow(1, self.u_n, self.u_n)).detach().numpy().ravel()
             action = self.sample(mean, var) + np.random.normal(0, self.exploration, self.u_n)
             action += np.random.normal(0, self.exploration, self.u_n)
@@ -72,7 +72,7 @@ class Agent(object):
             if (self.u_n > 2):
                 action[2] = np.round(action[2])
                 msg.z = action[2]
-        else:
+        else: #assume deterministic policy
             i = np.random.random()
             if i < self.exploration: 
                 action = mean
