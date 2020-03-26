@@ -6,13 +6,6 @@ import sys
 import vrep
 import time
 
-algs = {
-    1: "CUST_MADDPG_OPT",
-    2: "MADDPG"
-}
-ALGORITHM = 2
-ALGORITHM = algs[ALGORITHM]
-
 def receiveStatus(message):
     if message.data == 1: #failure 
         failure = True 
@@ -20,11 +13,6 @@ def receiveStatus(message):
 
 rospy.init_node('Dummy', anonymous = True)
 vrep_sub = rospy.Subscriber("/failure", Int8, receiveStatus, queue_size = 1)
-alg_pub = rospy.Publisher("/algChoice", String, queue_size = 10)
-rospy.sleep(2)
-msg = String()
-msg.data = ALGORITHM
-alg_pub.publish(msg)
 
 episodes = 50 
 maxTime = 180 #seconds...3 minutes in this case

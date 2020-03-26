@@ -12,7 +12,7 @@ class Network(nn.Module):
     def __init__(self, netParams, trainParams):
         super(Network,self).__init__()
         self.state_n = netParams['state_n']
-        self.in_n = self.state_n
+        self.in_n = netParams['in_n']
         self.out_n = netParams['output_n']
         self.prob = netParams['prob'] #denotes whether or not this is a PNN
         self.noise_in = netParams['sigma'] 
@@ -94,7 +94,7 @@ class Network(nn.Module):
 
     def train_cust(self, inputs, outputs, advantages = None):
         self.train()
-        '''TODO: no epochs are being taking into account due to early return!!!'''
+        lossTot = 0
         for i in range(self.epochs):
             if self.pre:
                 inputs, outputs = self.preProcess(inputs ,outputs)
@@ -102,18 +102,19 @@ class Network(nn.Module):
             if self.loss_fnc != None: #MSELoss
                 assert advantages == None 
                 loss = self.loss_fnc(out, outputs)
-                loss.backward()
-                self.optimizer.step()
-                return loss
             else: #policy gradient
                 #each row is a sample. Outputs represent our actions!
                 means = out[:, :int(self.out_n/2)]
-                std = out[:, int(self.out_n/2):]
-                outputs = torch.FloatTensor(outputs)
-                prob = torch.exp(-(1/2)*(((means - outputs) ** 2 )/  std))
-                prob = (1/((2*np.pi)**(1/2) * std) * prob)
-                gradient = -torch.sum(torch.log(prob)*advantages)
-                gradient.backward() 
-                self.optimizer.step()
-                return gradient 
+                if self.prob:
+                    std = out[:, int(self.out_n/2):]
+                    outputs = torch.FloatTensor(outputs)
+                    prob = torch.exp(-(1/2)*(((means - outputs) ** 2 )/  std))
+                    prob = (1/((2*np.pi)**(1/2) * std) * prob)
+                    loss = -torch.sum(torch.log(prob)*advantages)
+                else:
+                    loss = (torch.sum(means * advantages))*(1 / (means.size())[0])
+            loss.backward() 
+            self.optimizer.step()
+            lossTot += loss
+        return lossTot
 

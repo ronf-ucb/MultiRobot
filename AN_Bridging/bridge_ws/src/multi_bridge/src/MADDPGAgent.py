@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from agent import Agent
 
 class MADDPGAgent(Agent):
-    def __init__(self):
-        super(MADDPGAgent, self).__init__()
+    def __init__(self, params):
+        super(MADDPGAgent, self).__init__(params)
 
         actorParams = params['actorParams']
         actorTrain = params['actorTrain']
@@ -32,8 +32,12 @@ class MADDPGAgent(Agent):
         self.prob = actorParams['prob']
 
         self.actor = Network(actorParams, actorTrain)
+        self.critic = self.valueNet
 
-        self.replayFeatures = 
+        self.replayFeatures = 2*self.state_n + self.u_n*2 + 1 
+        self.experience = np.zeros((self.expSize, self.replayFeatures))
+
+        self.sigmoid = nn.Sigmoid()
         self.actorLoss = []
     
         while(True):
@@ -75,27 +79,44 @@ class MADDPGAgent(Agent):
             vector = vector / norm
 
             R_agents += np.sum(deltas * vector) #dot product  
-        R_rope = -2 if ((self.u_n == 3) and (action[-1] in self.ropes)) else 0
+        R_rope = -5 if ((self.u_n == 3) and (np.ravel(action)[-1] in self.ropes)) else 0
 
         reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents + R_rope
         return reward
 
-    def train(self):
-        '''TODO: Finish this up!'''
-        choices = np.random.choice(min(self.expSize, self.dataSize), self.batch_size) 
-        data = self.experience[choices]
-        r = data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1] #ASSUMING S, A, R, S' structure for experience 
-        targets = torch.from_numpy(r) + self.discount * self.critic.predict(data[:, -self.state_n: ])
-        loss = self.critic.train_cust(data[:, :self.state_n], targets)
-        self.criticLoss.append(loss)
+    def receiveState(self, message):
+        floats = vrep.simxUnpackFloats(message.data)
+        self.goalPosition = np.array(floats[-3:])
+        state = (np.array(floats[:self.state_n])).reshape(1,-1)
+        if self.startDistance == 0:
+            pos = state[:, 3:6].ravel()
+            self.startDistance = np.sqrt(np.sum(np.square(pos - self.goalPosition)))
+        for i in range(self.agents_n - 1):
+            '''TODO: receive the observations and ADD GAUSSIAN NOISE HERE PROPORTIONAL TO DISTANCE. Concatenate to the state'''
+        action = (self.sendAction(state)).reshape(1,-1)
+        if type(self.prevState) == np.ndarray:
+            r = np.array(self.rewardFunction(state, action)).reshape(1,-1)
+            self.experience[self.dataSize % self.expSize] = np.hstack((self.prevState, self.prevAction[:, :self.u_n], r, state, action[:, :self.u_n]))
+            self.dataSize += 1
+        self.prevState = state
+        self.prevAction = action
+        self.train()
+        return 
 
-        index = np.random.randint(0, self.experience.shape[0] - self.horizon)
-        data = self.experience[index: index + self.horizon]
-        states = data[:,:self.state_n]
-        statePrime = data[:, -self.state_n:]
-        valueS = self.critic.predict(states)
-        valueSPrime = self.critic.predict(statePrime)
-        advantage = torch.from_numpy(data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1]) + self.discount*valueSPrime + valueS
-        actions = data[:, self.state_n: self.state_n + self.u_n]
-        loss = self.actor.train_cust(states, actions, advantage)
-        self.actorLoss.append(loss)
+    def train(self):
+        if self.dataSize >= self.batch_size and self.dataSize >= self.horizon:
+            choices = np.random.choice(min(self.expSize, self.dataSize), self.batch_size) 
+            data = self.experience[choices]
+            r = data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1] #ASSUMING S, A, R, S', A' structure for experience 
+            targets = torch.from_numpy(r) + self.discount * self.critic.predict(data[:, -(self.state_n + self.u_n): ])
+            loss = self.critic.train_cust(data[:, :self.state_n + self.u_n], targets)
+            self.valueLoss.append(loss)
+
+            index = np.random.randint(0, self.experience.shape[0] - self.horizon)
+            data = self.experience[index: index + self.horizon]
+            stateAction = data[:, :(self.state_n+self.u_n)]
+            criticValue = self.critic.predict(stateAction)
+            states = data[:, :self.state_n]
+            actions = data[:, self.state_n: self.state_n + self.u_n]
+            loss = self.actor.train_cust(states, actions, criticValue)
+            self.actorLoss.append(loss)
