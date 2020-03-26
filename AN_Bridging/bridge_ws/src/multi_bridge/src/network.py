@@ -115,5 +115,5 @@ class Network(nn.Module):
                 gradient = -torch.sum(torch.log(prob)*advantages)
                 gradient.backward() 
                 self.optimizer.step()
-                return gradient
+                return gradient 
 

@@ -16,32 +16,12 @@ import matplotlib.pyplot as plt
     # critic network
     # actor network copy for KL divergence calculations
 
-#Supports MADDPG with TRPO inspiration and optimizations in better scaling towards larger multiagent systems and stability
-
 class Agent():
     def __init__(self, params, alg):
         self.alg = alg
-        criticParams = params['criticParams']
-        criticTrain = params['criticTrain']
+        valueParams = params['valueParams']
+        valueTrain = params['valueTrain']
         ROSParams = params['ROS']
-
-        if alg == "CUST_MADDPG_OPT":
-            actorParams = params['actorParams']
-            actorTrain = params['actorTrain']
-    
-            self.discount = actorTrain['gamma']
-            self.weight_loc = actorTrain['alpha1']
-            self.weight_vel = actorTrain['alpha2']
-            self.weight_agents = actorTrain['lambda']
-            self.horizon = actorTrain['horizon']
-            self.expSize = actorTrain['buffer']
-            self.exploration = actorTrain['explore']
-
-            self.own_n = actorParams['own_n']
-            self.u_n = actorParams['output_n']
-            self.prob = actorParams['prob']
-
-            self.actor = Network(actorParams, actorTrain)
 
         self.critic = Network(criticParams, criticTrain)
 
@@ -55,8 +35,8 @@ class Agent():
         self.aPub = rospy.Publisher(self.actionPub, Vector3, queue_size = pubQ)
         rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
 
-        self.batch_size = criticTrain['batch']
-        self.state_n = criticParams['state_n']
+        self.batch_size = valueTrain['batch']
+        self.state_n = valueParams['state_n']
 
         replayFeatures = 2*self.state_n + self.u_n + 1 
         self.experience = np.zeros((self.expSize, replayFeatures))
@@ -71,11 +51,7 @@ class Agent():
         self.fail = False
         self.ropes = [0,1,2]
 
-        self.criticLoss = []
-        self.actorLoss = []
-
-        while(True):
-            x = 1+1
+        self.valueLoss = []
         
     def receiveStatus(self, message):
         if message.data == 1:
@@ -108,11 +84,11 @@ class Agent():
     def sendAction(self, state):
         out = self.actor.predict(state)
         mean = (out.narrow(1, 0, self.u_n).detach()).numpy().ravel()
+        msg = Vector3()
         if self.prob:
             var = (out.narrow(1, self.u_n, self.u_n)).detach().numpy().ravel()
             action = self.sample(mean, var) + np.random.normal(0, self.exploration, self.u_n)
             action += np.random.normal(0, self.exploration, self.u_n)
-            msg = Vector3()
             msg.x = action[0]
             msg.y = action[1]
             if (self.u_n > 2):
@@ -122,78 +98,18 @@ class Agent():
         else:
             i = np.random.random()
             if i < self.exploration:
-                action = np.random.randint(0, self.u_n)
+                msg.x = np.randint(-4, 5, size = 1)
+                msg.y = np.randint(-4, 5, size = 1)
+                if (self.u_n > 2):
+                    msg.z = np.randint(0, 3, size = 1)
             else:
-                action = np.argmax(mean)
-            print("ERROR: NOT IMPLEMENTED")
-            assert False            
+                msg.x = mean[0]
+                msg.y = mean[1]
+                msg.z = np.round(mean[2])           
         return action
 
     def sample(self, mean, var):
         return np.random.normal(mean, var)
-
-    def rewardFunction(self, state, action):
-        if self.fail:
-            return -10
-
-        state = state.ravel()
-        prevState = self.prevState.ravel()
-        robState = state[:self.state_n]
-        position = np.array(state[3:6])
-        prevPosition = np.array(prevState[3:6])
-
-        '''Calculate distance from the goal location'''
-        deltas = self.goalPosition - position
-        R_loc = (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
-        
-        '''Calculate velocity along direction towards goal position '''
-        deltas = position - prevPosition
-        vector = self.goalPosition - prevPosition
-        norm = np.sqrt(np.sum(np.square(vector)))
-        vector = vector / norm
-        R_vel = np.sum(deltas * vector)
-
-        R_agents = 0
-        for i in range(self.agents_n - 1):
-            startIndex = self.own_n + 4*i
-            position = state[startIndex: startIndex + 3]
-            prevPosition = np.array(prevState[startIndex: startIndex+3])
-            deltas = self.goalPosition - position
-
-            R_agents += (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
-
-            deltas = position - prevPosition
-            vector = self.goalPosition - prevPosition
-            norm = np.sqrt(np.sum(np.square(vector)))
-            vector = vector / norm
-
-            R_agents += np.sum(deltas * vector) #dot product  
-        R_rope = -2 if ((self.u_n == 3) and (action[-1] in self.ropes)) else 0
-
-        reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents + R_rope
-        return reward
-
-    def train(self):
-        if self.dataSize >= self.batch_size:
-            #WE DO THIS PART REGARDLESS! TODO: when adding in new functionality, change this to conditional!
-            choices = np.random.choice(min(self.expSize, self.dataSize), self.batch_size) 
-            data = self.experience[choices]
-            r = data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1] #ASSUMING S, A, R, S' structure for experience 
-            targets = torch.from_numpy(r) + self.discount * self.critic.predict(data[:, -self.state_n: ])
-            loss = self.critic.train_cust(data[:, :self.state_n], targets)
-            self.criticLoss.append(loss)
-
-            if self.alg == "CUST_MADDPG_OPT":
-                index = np.random.randint(0, self.experience.shape[0] - self.horizon)
-                data = self.experience[index: index + self.horizon]
-                states = data[:,:self.state_n]
-                statePrime = data[:, -self.state_n:]
-                valueS = self.critic.predict(states)
-                valueSPrime = self.critic.predict(statePrime)
-                advantage = torch.from_numpy(data[:, self.state_n + self.u_n: self.state_n + self.u_n + 1]) + self.discount*valueSPrime + valueS
-                actions = data[:, self.state_n: self.state_n + self.u_n]
-                loss = self.actor.train_cust(states, actions, advantage)
-                self.actorLoss.append(loss)
     
     def plotLoss(self):
         plt.plot(range(len(self.criticLoss)), self.criticLoss)

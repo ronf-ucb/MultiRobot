@@ -7,9 +7,10 @@ import vrep
 import time
 
 algs = {
-    1: "CUST_MADDPG_OPT"
+    1: "CUST_MADDPG_OPT",
+    2: "MADDPG"
 }
-ALGORITHM = 1
+ALGORITHM = 2
 ALGORITHM = algs[ALGORITHM]
 
 def receiveStatus(message):

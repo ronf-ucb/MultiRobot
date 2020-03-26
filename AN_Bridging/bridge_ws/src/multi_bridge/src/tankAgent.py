@@ -64,6 +64,55 @@ def algorithmChoice(msg):
                     'delta_t': .05,
                     'numAgents': 2}
         params = {"actorParams": actPars, "criticParams": criticPars, "actorTrain": actorTrainPars, "criticTrain": criticTrainPars, "ROS": ROSparams}
+    if description == "MADDPG":
+        actPars = {'state_n': 12,
+                    'own_n': 7,
+                    'output_n': 3,
+                    'prob': False,
+                    'hidden': 100,
+                    'depth': 2,
+                    'activation': nn.ReLU(),
+                    'preprocess': False,
+                    'postprocess': True,
+                    'epochs': 1,
+                    'loss_fnc': "policy_gradient_determ",
+                    'sigma': 1,
+                    'dropout': .1
+                    }
+        valuePars = {
+                    'sigma': 1, 
+                    'state_n': 17,
+                    'output_n': 1,
+                    'prob': False,
+                    'hidden': 100,
+                    'depth': 2,
+                    'activation': nn.ReLU(),
+                    'preprocess': False,
+                    'postprocess': True,
+                    'epochs': 1,
+                    'loss_fnc': "MSE" , 
+                    'dropout': .10,
+                    }
+        actorTrainPars = {'alpha1': 2,
+                    'alpha2': 2,
+                    'lambda': .5,
+                    'horizon': 16,
+                    'buffer': 1000,
+                    'explore': 1, 
+                    'lr': .0000001,
+                    'gamma': GAMMA,
+                    }
+        valueTrainPars = {
+                    'batch': 16,
+                    'lr': .0000001,
+                    'gamma': GAMMA}
+        ROSparams = {'stateSub': "/tanker",
+                    'subQueue': 1,
+                    'actionPub': "/tankerSubscribe",
+                    'pubQueue': 1,
+                    'delta_t': .05,
+                    'numAgents': 2}
+        params = {"actorParams": actPars, "valueParams": valuePars, "actorTrain": actorTrainPars, "valueTrain": valueTrainPars, "ROS": ROSparams}
     bridger = Agent(params, description)
 
 rospy.init_node('Dummy', anonymous = True)
