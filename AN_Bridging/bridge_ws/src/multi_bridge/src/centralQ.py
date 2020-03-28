@@ -41,49 +41,10 @@ class CentralQ(Agent):
 
         self.map = {0: -2, 1: 0, 2: 2}
     
-        while(True):
+        while(not self.stop):
             x = 1+1
-
-    def rewardFunction(self, state, action):
-        if self.fail:
-            return -10
-
-        state = state.ravel()
-        prevState = self.prevState.ravel()
-        robState = state[:self.state_n]
-        position = np.array(state[3:6])
-        prevPosition = np.array(prevState[3:6])
-
-        '''Calculate distance from the goal location'''
-        deltas = self.goalPosition - position
-        R_loc = (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
         
-        '''Calculate velocity along direction towards goal position '''
-        deltas = position - prevPosition
-        vector = self.goalPosition - prevPosition
-        norm = np.sqrt(np.sum(np.square(vector)))
-        vector = vector / norm
-        R_vel = np.sum(deltas * vector)
-
-        R_agents = 0
-        for i in range(self.agents_n - 1):
-            startIndex = self.own_n + 4*i
-            position = state[startIndex: startIndex + 3]
-            prevPosition = np.array(prevState[startIndex: startIndex+3])
-            deltas = self.goalPosition - position
-
-            R_agents += (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
-
-            deltas = position - prevPosition
-            vector = self.goalPosition - prevPosition
-            norm = np.sqrt(np.sum(np.square(vector)))
-            vector = vector / norm
-
-            R_agents += np.sum(deltas * vector) #dot product  
-        R_rope = -5 if ((self.u_n == 3) and (np.ravel(action)[-1] in self.ropes)) else 0
-
-        reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents + R_rope
-        return reward
+        self.plotLoss(True, "Centralized Q Networks: Q Value Loss over Iterations")
 
     def receiveState(self, message):
         floats = vrep.simxUnpackFloats(message.data)
@@ -134,8 +95,6 @@ class CentralQ(Agent):
             self.bridgePub.publish(msg)
         return np.array([index])
         
-
-
     def train(self):
         if self.dataSize > self.batch_size:
             choices = np.random.choice(min(self.dataSize, self.expSize), self.batch_size)
@@ -157,3 +116,5 @@ class CentralQ(Agent):
             self.QNetwork.optimizer.zero_grad()
             loss.backward()
             self.QNetwork.optimizer.step()
+            self.avgLoss += loss
+            self.trainIt += 1

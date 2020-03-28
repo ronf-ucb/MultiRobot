@@ -31,6 +31,7 @@ class Agent(object):
         self.agents_n = self.ROSParams['numAgents']
         self.delta_t = self.ROSParams['delta_t']
         self.vrep_sub = rospy.Subscriber("/failure", Int8, self.receiveStatus, queue_size = 1)
+        self.finish_sub = rospy.Subscriber("/finished", Int8, self.receiveDone, queue_size = 1)
         self.aPub = rospy.Publisher(self.actionPub, Vector3, queue_size = pubQ)
         rospy.Subscriber(stateSub, String, self.receiveState, queue_size = subQ) 
 
@@ -49,6 +50,13 @@ class Agent(object):
         self.ropes = [0,1,2]
 
         self.valueLoss = []
+        self.stop = False
+        self.avgLoss = 0
+        self.trainIt = 0
+    
+    def receiveDone(self, message):
+        if message.data  == 1:
+            self.stop = True
         
     def receiveStatus(self, message):
         if message.data == 1:
@@ -56,6 +64,8 @@ class Agent(object):
             self.prevAction = None
             self.goalPosition = 0
             self.startDistance = 0 
+            self.valueLoss.append(self.avgLoss/self.trainIt)
+            self.trainIt = 0
         else:
             self.fail = False
            
@@ -90,13 +100,62 @@ class Agent(object):
         self.aPub.publish(msg)         
         return action
 
+    def rewardFunction(self, state, action):
+        if self.fail:
+            return -10
+
+        state = state.ravel()
+        prevState = self.prevState.ravel()
+        robState = state[:self.state_n]
+        position = np.array(state[3:6])
+        prevPosition = np.array(prevState[3:6])
+
+        '''Calculate distance from the goal location'''
+        deltas = self.goalPosition - position
+        R_loc = (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
+        
+        '''Calculate velocity along direction towards goal position '''
+        deltas = position - prevPosition
+        vector = self.goalPosition - prevPosition
+        norm = np.sqrt(np.sum(np.square(vector)))
+        vector = vector / norm
+        R_vel = np.sum(deltas * vector)
+
+        '''Calculate the delta of angle towards the goal'''
+        R_vel += ((np.pi/2 - (state[6])) / np.pi)
+        
+
+        R_agents = 0
+        for i in range(self.agents_n - 1):
+            startIndex = self.own_n + 4*i
+            position = state[startIndex: startIndex + 3]
+            prevPosition = np.array(prevState[startIndex: startIndex+3])
+            deltas = self.goalPosition - position
+
+            R_agents += (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
+
+            deltas = position - prevPosition
+            vector = self.goalPosition - prevPosition
+            norm = np.sqrt(np.sum(np.square(vector)))
+            vector = vector / norm
+
+            R_agents += np.sum(deltas * vector) #dot product  
+
+            R_agents += (((np.pi/2) - state[startIndex + 3]) / np.pi)
+            
+        R_rope = -5 if ((self.u_n == 3) and (np.ravel(action)[-1] in self.ropes)) else 0
+
+        reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents + R_rope
+        return reward
+
     def sample(self, mean, var):
         return np.random.normal(mean, var)
     
-    def plotLoss(self):
-        plt.plot(range(len(self.criticLoss)), self.criticLoss)
-        plt.title("Critic Loss over Iterations")
+    def plotLoss(self, valueOnly = False, title1 = "Critic Loss over Iterations", title2 = "Actor Loss over Iterations"):
+        plt.plot(range(len(self.valueLoss)), self.valueLoss)
+        plt.title(title1)
         plt.show()
-        plt.plot(range(len(self.actorLoss)), self.actorLoss)
-        plt.title("Actor Loss over Iterations")
-        plt.show()
+        if not valueOnly:
+            plt.plot(range(len(self.actorLoss)), self.actorLoss)
+            plt.title(title2)
+            plt.show()

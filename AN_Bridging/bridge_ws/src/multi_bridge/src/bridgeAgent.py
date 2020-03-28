@@ -138,7 +138,7 @@ if description == "CENTRAL_Q":
                 'dropout': .10 }             
     valueTrainPars = {
                 'batch': 32,
-                'lr': .00001,
+                'lr': .000001,
                 'gamma': GAMMA,
                 'alpha1': 2,
                 'alpha2': 2,

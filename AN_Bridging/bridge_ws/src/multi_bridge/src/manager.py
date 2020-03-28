@@ -10,6 +10,7 @@ class Manager():
     def __init__(self):
         rospy.init_node('Dummy', anonymous = True)
         vrep_sub = rospy.Subscriber("/failure", Int8, self.receiveStatus, queue_size = 1)
+        finish_pub = rospy.Publisher('/finished', Int8, queue_size = 1)
         vrep.simxFinish(-1) #clean up the previous stuff
         clientID = vrep.simxStart('127.0.0.1', 19997, True, True, 5000, 5)
         if clientID == -1:
@@ -35,13 +36,16 @@ class Manager():
                 is_running = server_state & 1
             counter += 1
             first = False
+        msg = Int8()
+        msg.data = 1
+        finish_pub.publish(msg)
 
     def receiveStatus(self, message):
         if message.data == 1: #failure 
             self.failure = True 
         return
 
-episodes = 50 
+episodes = 200
 maxTime = 180 #seconds...3 minutes in this case
 
 
