@@ -16,8 +16,12 @@ class CentralQ(Agent):
     def __init__(self, params):
         super(CentralQ, self).__init__(params)
 
-        self.QNetwork = self.valueNet
-        self.targetNetwork = Network(self.valueParams, self.valueTrain)
+        self.trainMode = self.valueParams['trainMode']
+        if self.trainMode:
+            self.QNetwork = self.valueNet
+            self.targetNetwork = Network(self.valueParams, self.valueTrain)
+        else:
+            self.valueNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork.txt"))
 
         self.discount = self.valueTrain['gamma']
         self.weight_loc = self.valueTrain['alpha1']
@@ -45,6 +49,7 @@ class CentralQ(Agent):
             x = 1+1
         
         self.plotLoss(True, "Centralized Q Networks: Q Value Loss over Iterations")
+        self.saveModel()
 
     def receiveState(self, message):
         floats = vrep.simxUnpackFloats(message.data)
@@ -55,15 +60,20 @@ class CentralQ(Agent):
             self.startDistance = np.sqrt(np.sum(np.square(pos - self.goalPosition)))
         for i in range(self.agents_n - 1):
             '''TODO: receive the observations and ADD GAUSSIAN NOISE HERE PROPORTIONAL TO DISTANCE. Concatenate to the state'''
-        action = (self.sendAction(state)).reshape(1,-1)
+        index, ropeAction = (self.sendAction(state))
         if type(self.prevState) == np.ndarray:
-            r = np.array(self.rewardFunction(state, action)).reshape(1,-1)
+            r = np.array(self.rewardFunction(state, ropeAction)).reshape(1,-1)
             self.experience[self.dataSize % self.expSize] = np.hstack((self.prevState, self.prevAction[:, :1], r, state))
             self.dataSize += 1
         self.prevState = state
-        self.prevAction = action
-        self.train()
+        self.prevAction = index
+        if self.trainMode:
+            self.train()
         return 
+    
+    def saveModel(self):
+        torch.save(self.QNetwork.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork.txt")
+        print("Network saved")
 
     def sendAction(self, state):
         q = self.QNetwork.predict(state)
@@ -72,28 +82,28 @@ class CentralQ(Agent):
             index = np.random.randint(84)
         else:
             index = np.argmax(q.detach().numpy())
+        tank, bridge = self.index_to_action(index)
+        self.tankPub.publish(tank)
+        self.bridgePub.publish(bridge)
+        return np.array([index]).reshape(1,-1), np.array([tank.z]).reshape(1,-1)
+
+    
+    def index_to_action(self, index):
+        tankmsg = Vector3()
+        bridgemsg = Vector3()
         if index >= 81:
-            msg = Vector3()
-            index = index - 81
-            msg.x = 0
-            msg.y = 0
-            msg.z = index
-            self.tankPub.publish(msg)
-            self.bridgePub.publish(msg)
+            tankmsg.x = 0
+            tankmsg.y = 0
+            tankmsg.z = index - 81
+            bridgemsg.x = 0
+            tankmsg.y = 0
         else:
-            tankLeft = index % 3
-            tankRight = (index // 3) % 3
-            bridgeLeft = (index // 9) % 3
-            bridgeRight = (index // 27) % 3
-            msg = Vector3()
-            msg.x = self.map[tankLeft]
-            msg.y = self.map[tankRight]
-            msg.z = -1
-            self.tankPub.publish(msg)
-            msg.x = self.map[bridgeLeft]
-            msg.y = self.map[bridgeRight]
-            self.bridgePub.publish(msg)
-        return np.array([index])
+            tankmsg.x = self.map[index % 3]
+            tankmsg.y = self.map[(index // 3) % 3]
+            tankmsg.z = -1
+            bridgemsg.x  = self.map[(index // 9) % 3]
+            bridgemsg.y = self.map[(index//27) % 3]
+        return (tankmsg, bridgemsg)
         
     def train(self):
         if self.dataSize > self.batch_size:
@@ -116,5 +126,6 @@ class CentralQ(Agent):
             self.QNetwork.optimizer.zero_grad()
             loss.backward()
             self.QNetwork.optimizer.step()
-            self.avgLoss += loss
+           #self.valueLoss.append(loss/self.batch_size)
+            self.avgLoss += loss/self.batch_size
             self.trainIt += 1

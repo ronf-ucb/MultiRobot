@@ -19,6 +19,7 @@ class Manager():
         first = True
         counter = 0
         while (counter < episodes):
+            print("Episode Number ", counter + 1)
             r = 1 
             if not first and r != 0:
                 r = vrep.simxStartSimulation(clientID, vrep.simx_opmode_oneshot)
@@ -45,8 +46,8 @@ class Manager():
             self.failure = True 
         return
 
-episodes = 200
-maxTime = 180 #seconds...3 minutes in this case
+episodes = 100
+maxTime =  300
 
 
 if __name__ == "__main__":

@@ -59,12 +59,13 @@ class Agent(object):
             self.stop = True
         
     def receiveStatus(self, message):
-        if message.data == 1:
+        if message.data == 1 and self.trainIt > 5:
             self.prevState = None 
             self.prevAction = None
             self.goalPosition = 0
             self.startDistance = 0 
-            self.valueLoss.append(self.avgLoss/self.trainIt)
+            self.valueLoss.append((self.avgLoss)/self.trainIt)
+            self.avgLoss = 0    
             self.trainIt = 0
         else:
             self.fail = False
@@ -100,50 +101,49 @@ class Agent(object):
         self.aPub.publish(msg)         
         return action
 
-    def rewardFunction(self, state, action):
-        if self.fail:
-            return -10
-
+    def rewardFunction(self, state, action): 
         state = state.ravel()
         prevState = self.prevState.ravel()
         robState = state[:self.state_n]
         position = np.array(state[3:6])
+        if position[2] < .05:
+            return -20 #failure
         prevPosition = np.array(prevState[3:6])
 
         '''Calculate distance from the goal location'''
         deltas = self.goalPosition - position
-        R_loc = (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
+        R_loc = (((1/np.sqrt(np.sum(deltas*deltas)))) * self.startDistance ) - self.startDistance
         
         '''Calculate velocity along direction towards goal position '''
         deltas = position - prevPosition
         vector = self.goalPosition - prevPosition
         norm = np.sqrt(np.sum(np.square(vector)))
         vector = vector / norm
-        R_vel = np.sum(deltas * vector)
+        R_vel = np.sum(deltas * vector) - (np.sum(np.square(vector)))/2
 
         '''Calculate the delta of angle towards the goal'''
-        R_vel += ((np.pi/2 - (state[6])) / np.pi)
+        R_vel += ((np.pi - (np.abs(state[6])))/np.pi) - (np.pi/2)
         
 
         R_agents = 0
         for i in range(self.agents_n - 1):
             startIndex = self.own_n + 4*i
             position = state[startIndex: startIndex + 3]
+            if position[2] < .05:
+                return -20
             prevPosition = np.array(prevState[startIndex: startIndex+3])
             deltas = self.goalPosition - position
 
-            R_agents += (1/np.sqrt(np.sum(np.square(deltas*deltas)))) * self.startDistance
-
+            R_agents += (((1/np.sqrt(np.sum(deltas*deltas)))) * self.startDistance) - self.startDistance
             deltas = position - prevPosition
             vector = self.goalPosition - prevPosition
             norm = np.sqrt(np.sum(np.square(vector)))
             vector = vector / norm
 
-            R_agents += np.sum(deltas * vector) #dot product  
-
-            R_agents += (((np.pi/2) - state[startIndex + 3]) / np.pi)
+            R_agents += np.sum(deltas * vector) - (np.sum(np.square(vector)))/2 #dot product  
+            R_agents += ((np.pi - (np.abs(state[startIndex + 3])))/np.pi) - (np.pi/2) #orientation
             
-        R_rope = -5 if ((self.u_n == 3) and (np.ravel(action)[-1] in self.ropes)) else 0
+        R_rope = -10 if ((self.u_n == 3) and (np.ravel(action)[-1] in self.ropes)) else 0
 
         reward = self.weight_loc * R_loc + self.weight_vel * R_vel + self.weight_agents * R_agents + R_rope
         return reward

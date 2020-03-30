@@ -125,6 +125,7 @@ if description == "MADDPG":
 if description == "CENTRAL_Q":
     valuePars = {'prob': False,
                 'sigma': 1, #relative 
+                'trainMode': True,
                 'state_n': 11,
                 'output_n': 84, #-2,0,2 for each 4 legs plus 3 actions where corresponds: stop and unhook, stop and hook front, stop and hook back
                 'in_n': 11,
@@ -137,7 +138,7 @@ if description == "CENTRAL_Q":
                 'loss_fnc': "MSE",
                 'dropout': .10 }             
     valueTrainPars = {
-                'batch': 32,
+                'batch': 16,
                 'lr': .000001,
                 'gamma': GAMMA,
                 'alpha1': 2,
