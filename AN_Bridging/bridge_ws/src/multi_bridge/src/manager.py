@@ -46,7 +46,7 @@ class Manager():
             self.failure = True 
         return
 
-episodes = 100
+episodes = 700
 maxTime =  300
 
 

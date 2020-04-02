@@ -141,9 +141,10 @@ if description == "CENTRAL_Q":
                 'batch': 16,
                 'lr': .000001,
                 'gamma': GAMMA,
-                'alpha1': 2,
-                'alpha2': 2,
-                'lambda': 2,
+                'alpha1': 1.5,
+                'alpha2': 6,
+                'alpha3': .1,
+                'lambda': 1,
                 'buffer': 1000,
                 'explore': .9, }
     ROSparams = {'stateSub': "/bridger" ,
