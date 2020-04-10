@@ -11,14 +11,20 @@ from geometry_msgs. msg import Vector3
 from agent import Agent
 from customAgent import CustomAgent 
 from MADDPGAgent import MADDPGAgent 
+from centralQSARSA import CentralQSarsa
+from centralQ import CentralQ
+from trpo import TRPOAgent
 
-GAMMA = .9
+GAMMA = .95
 
 algs = {
     1: "CUST_MADDPG_OPT",
-    2: "MADDPG"
+    2: "MADDPG",
+    3: "CENTRAL_Q", #REMINDER: if choosing 3, make sure to only run the tankAgent.py in the launch file
+    4: "CENTRAL_Q_SARSA", #REMINDER: same as above
+    5: "CENTRAL_TRPO"
 }
-ALGORITHM = 2
+ALGORITHM = 5
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
@@ -119,15 +125,109 @@ if description == "MADDPG":
                 'batch': 16,
                 'lr': .0000001,
                 'gamma': GAMMA}
-    ROSparams = {'stateSub': "/tanker",
+    ROSparams = {'tankSub': "/tanker",
                 'subQueue': 1,
-                'actionPub': "/tankerSubscribe",
+                'tankPub': "/tankerSubscribe",
                 'pubQueue': 1,
                 'delta_t': .05,
                 'numAgents': 2}
     params = {"actorParams": actPars, "valueParams": valuePars, "actorTrain": actorTrainPars, "valueTrain": valueTrainPars, "ROS": ROSparams}
     tanker = MADDPGAgent(params)
+if description == "CENTRAL_Q":
+    valuePars = {'prob': False,
+                'sigma': 1, #relative 
+                'trainMode': True,
+                'output_n': 52, #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
+                'in_n': 11,
+                'own_n': 4,
+                'u_n': 52,
+                'other_n': 4,
+                'hidden': 500,
+                'depth': 3,
+                'activation': nn.ReLU(),
+                'preprocess': False, #makes no sense really
+                'epochs': 1,
+                'loss_fnc': "MSE",
+                'dropout': .10 }             
+    valueTrainPars = {
+                'batch': 32,
+                'lr': 1e-8,
+                'gamma': GAMMA,
+                'alpha1': .25,
+                'alpha2': 20,
+                'alpha3': .4,
+                'lambda': 1,
+                'buffer': 2000,
+                'explore': .85, 
+                'baseExplore': .15,
+                'decay': .85,
+                'step': 80,
+                'replayDim': 2*valuePars['in_n'] + 1 + 1}
+    ROSparams = {'tankSub': "/tanker" ,
+                'subQueue': 1,
+                'bridgePub': "/bridgerSubscribe",
+                'pubQueue': 1,
+                'tankPub': "/tankerSubscribe",
+                'delta_t': .05,
+                'numAgents': 2}
+    params = { "valueParams": valuePars, "valueTrain": valueTrainPars, "ROS": ROSparams}
+    bridger = CentralQ(params)
+if description == "CENTRAL_Q_SARSA":
+    valuePars = {'prob': False,
+                'sigma': 1, #relative 
+                'trainMode': True,
+                'output_n': 52, #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
+                'in_n': 10,
+                'u_n': 52,
+                'own_n': 4,
+                'other_n': 4,
+                'hidden': 400,
+                'depth': 3,
+                'activation': nn.ReLU(),
+                'preprocess': False, #makes no sense really
+                'epochs': 1,
+                'loss_fnc': "MSE",
+                'dropout': .10 }             
+    valueTrainPars = {
+                'batch': 8,
+                'lr': .000001,
+                'gamma': GAMMA,
+                'alpha1': .7,
+                'alpha2': 5,
+                'alpha3': .2,
+                'lambda': 1,
+                'buffer': 8,
+                'explore': .85, 
+                'baseExplore': .15,
+                'decay': .75,
+                'step': 300,
+                'replayDim': 2*valuePars['in_n'] + 2 + 1,
+                'QWeight': 0}
+    ROSparams = {'tankSub': "/tanker" ,
+                'subQueue': 1,
+                'bridgePub': "/bridgerSubscribe",
+                'pubQueue': 1,
+                'tankPub': "/tankerSubscribe",
+                'delta_t': .05,
+                'numAgents': 2}
+    params = { "valueParams": valuePars, "valueTrain": valueTrainPars, "ROS": ROSparams}
+    bridger = CentralQSarsa(params)
+if description == "CENTRAL_TRPO":
+    actPars = {'state_n': 10, 'own_n': 4, 'other_n': 4, 'in_n': 10,'output_n': 6, 'hidden': 400, 'depth': 3, 'activation': nn.ReLU(),
+            'preprocess': False, 'prob': True,
+            'epochs': 1,'sigma': 1, 'dropout': .1, 'loss_fnc': "policy_gradient"}
 
+    valPars = {'state_n': 10, 'own_n':4, 'other_n': 4, 'in_n': 10, 'output_n': 1, 'hidden': 400, 'depth': 3, 'activation': nn.ReLU(), 'u_n': 6,
+            'preprocess': False, 'prob': False, 'trainMode': True,
+            'epochs': 1, 'sigma': 1, 'dropout': .10,'loss_fnc': "MSE"}
 
+    actTrain = { 'explore': 1, 'lr': .0000001,'gamma': GAMMA}
+
+    valTrain = {'batch': 4,'lr': .0000001, 'gamma': GAMMA, 'alpha1': .7,'alpha2': 5,'alpha3': .2, 'lambda': 1}
+
+    ROSparams = {'tankSub': "/tanker" ,'subQueue': 1,'bridgePub': "/bridgerSubscribe",'pubQueue': 1,'tankPub': "/tankerSubscribe",'delta_t': .05,'numAgents': 2}
+
+    params = {"actorParams": actPars, "valueParams": valPars, "actorTrain": actTrain, "valueTrain": valTrain, "ROS": ROSparams}
+    tanker = TRPOAgent(params)
 while(True):
     x = 1+1

@@ -15,41 +15,27 @@ from agent import Agent
 class CentralQ(Agent):
     def __init__(self, params):
         super(CentralQ, self).__init__(params)
-
-        self.trainMode = self.valueParams['trainMode']
         if self.trainMode:
             self.QNetwork = self.valueNet
             self.targetNetwork = Network(self.valueParams, self.valueTrain)
         else:
             self.valueNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork.txt"))
-
-        self.discount = self.valueTrain['gamma']
-        self.weight_loc = self.valueTrain['alpha1']
-        self.weight_vel = self.valueTrain['alpha2']
-        self.weight_ori = self.valueTrain['alpha3']
-        self.weight_agents = self.valueTrain['lambda']
         self.expSize = self.valueTrain['buffer']
         self.exploration = self.valueTrain['explore']
-
-        self.replayFeatures = 2*self.state_n + 1 + 1 
+        self.base = self.valueTrain['baseExplore']
+        self.decay = self.valueTrain['decay']
+        self.step = self.valueTrain['step']
+        self.replayFeatures = self.valueTrain['replayDim']
         self.experience = np.zeros((self.expSize, self.replayFeatures))
-        self.tankPub = rospy.Publisher(self.ROSParams["tankPub"], Vector3, queue_size = 1)
-        self.bridgePub = self.aPub
-
-        self.sigmoid = nn.Sigmoid()
-        self.actorLoss = []
-        self.own_n = 7
-
-        self.u_n = 3
+        self.bridgePub = rospy.Publisher(self.ROSParams["bridgePub"], Vector3, queue_size = 1)
         self.replaceCounter = 0
-        self.QLearner = True
-
-        self.map = {0: -2, 1: 0, 2: 2}
+        self.actionMap = {0: (-3,-1), 1:(-1,-3), 2:(-3,-3), 3:(1,3), 4:(3,3), 5:(3,1), 6:(0,0)}
     
         while(not self.stop):
             x = 1+1
         
         self.plotLoss(True, "Centralized Q Networks: Q Value Loss over Iterations")
+        self.plotRewards()
         self.saveModel()
         
     def manageStatus(self, fail):
@@ -62,6 +48,11 @@ class CentralQ(Agent):
                 self.valueLoss.append((self.avgLoss)/self.trainIt)
             self.avgLoss = 0    
             self.trainIt = 0
+            for k in self.tankRun.keys():
+                self.tankRewards[k].append(self.tankRun[k])
+                self.bridgeRewards[k].append(self.bridgeRun[k])
+                self.tankRun[k] = 0
+                self.bridgeRun[k] = 0
         else:
             self.fail = False
 
@@ -70,23 +61,28 @@ class CentralQ(Agent):
         self.goalPosition = np.array(floats[-4:-1])
         failure = floats[-1]
         state = (np.array(floats[:self.state_n])).reshape(1,-1)
+
         if len(self.startDistance) == 0:
-            for i in range(self.agents_n):
-                pos = state[:, 3 + 4*i:6+4*i].ravel()
+            for i in range(self.agents_n): #assuming both states have same number of variables
+                pos = state[:, self.own_n*i:self.own_n*i + 3].ravel()
                 self.startDistance.append(np.sqrt(np.sum(np.square(pos - self.goalPosition))))
-        for i in range(self.agents_n - 1):
-            '''TODO: receive the observations and ADD GAUSSIAN NOISE HERE PROPORTIONAL TO DISTANCE. Concatenate to the state'''
         index, ropeAction = (self.sendAction(state))
         if type(self.prevState) == np.ndarray:
-            r = np.array(self.rewardFunction(state, ropeAction)).reshape(1,-1)
-            self.experience[self.dataSize % self.expSize] = np.hstack((self.prevState, self.prevAction[:, :1], r, state))
+            pen = 1 if self.prevAction[-1] > 50 else 0
+            r = np.array(self.rewardFunction(state, pen)).reshape(1,-1)
+            self.store(self.prevState, self.prevAction, r, state, index)
             self.dataSize += 1
         self.prevState = state
         self.prevAction = index
+        state = state.ravel()
+        self.prevDeltas = [abs(state[0]) - abs(state[4]), abs(state[1]) - abs(state[5]), abs(state[3]) - abs(state[7])]
         if self.trainMode:
             self.train()
         self.manageStatus(failure)
         return 
+
+    def store(self, s, a, r, sprime, aprime = None):
+        self.experience[self.dataSize % self.expSize] = np.hstack((s, a, r, sprime))
     
     def saveModel(self):
         torch.save(self.QNetwork.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork2.txt")
@@ -96,7 +92,7 @@ class CentralQ(Agent):
         q = self.QNetwork.predict(state)
         i = np.random.random()
         if i < self.exploration:
-            index = np.random.randint(84)
+            index = np.random.randint(self.u_n)
         else:
             index = np.argmax(q.detach().numpy())
         tank, bridge = self.index_to_action(index)
@@ -107,36 +103,47 @@ class CentralQ(Agent):
     def index_to_action(self, index):
         tankmsg = Vector3()
         bridgemsg = Vector3()
-        if index >= 81:
+        if index >= 49:
             tankmsg.x = 0
             tankmsg.y = 0
-            tankmsg.z = index - 81
+            tankmsg.z = index - 49
             bridgemsg.x = 0
-            tankmsg.y = 0
+            bridgemsg.y = 0
         else:
-            tankmsg.x = self.map[index % 3]
-            tankmsg.y = self.map[(index // 3) % 3]
+            tank = self.actionMap[index // 7]
+            bridge = self.actionMap[index % 7]
+            tankmsg.x = tank[0]
+            tankmsg.y = tank[1]
             tankmsg.z = -1
-            bridgemsg.x  = self.map[(index // 9) % 3]
-            bridgemsg.y = self.map[(index//27) % 3]
+            bridgemsg.x  = bridge[0]
+            bridgemsg.y = bridge[1]
         return (tankmsg, bridgemsg)
         
     def train(self):
         if self.dataSize > self.batch_size:
-            choices = np.random.choice(min(self.dataSize, self.expSize), self.batch_size)
+            probabilities = self.positiveWeightSampling(self.state_n + 1)
+            choices = np.random.choice(min(self.dataSize, self.expSize), self.batch_size, probabilities)
             data = self.experience[choices]
             states = data[:, :self.state_n]
             actions = data[:, self.state_n: self.state_n + 1]
             rewards = data[: self.state_n + 1: self.state_n + 2]
             nextStates = data[:, -self.state_n:]
 
-            if self.replaceCounter % 100 == 0:
+            if self.replaceCounter % 200 == 0:
                 self.targetNetwork.load_state_dict(self.QNetwork.state_dict())
             self.replaceCounter += 1
-        
-            q = self.QNetwork(torch.FloatTensor(states)).gather(1, torch.LongTensor(actions))
-            qnext = self.targetNetwork(torch.FloatTensor(nextStates)).detach()
-            qtar = torch.FloatTensor(rewards) + self.discount * qnext.max(1)[0].view(self.batch_size, 1)
+
+            #PREPROCESS AND POSTPROCESS SINCE WE ARE USING PREDICT TO SEND ACTIONS
+            processedInputs = self.QNetwork.preProcessIn(states) #preprocess inputs
+            qValues = self.QNetwork(torch.FloatTensor(processedInputs)) #pass in
+            qValues = self.QNetwork.postProcess(qValues) #post process
+            q = torch.gather(qValues, 1, torch.LongTensor(actions)) #get q values of actions
+            
+            processedNextStates = self.QNetwork.preProcessIn(nextStates) #preprocess
+            qnext = self.targetNetwork(torch.FloatTensor(processedNextStates)).detach() #pass in
+            qnext = self.targetNetwork.postProcess(qnext) #postprocess
+            qtar = torch.FloatTensor(rewards) + self.discount * qnext.max(1)[0].view(self.batch_size, 1) #calculate target
+    
             loss = self.QNetwork.loss_fnc(q, qtar)
 
             self.QNetwork.optimizer.zero_grad()
@@ -144,3 +151,6 @@ class CentralQ(Agent):
             self.QNetwork.optimizer.step()
             self.avgLoss += loss/self.batch_size
             self.trainIt += 1
+            if self.trainIt % self.step == 0:
+                self.exploration = (self.exploration - self.base)*self.decay + self.base
+                print(" ############# NEW EPSILON: ", self.exploration, " ################")

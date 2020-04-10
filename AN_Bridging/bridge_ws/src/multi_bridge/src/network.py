@@ -11,7 +11,6 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, Qu
 class Network(nn.Module):
     def __init__(self, netParams, trainParams):
         super(Network,self).__init__()
-        self.state_n = netParams['state_n']
         self.in_n = netParams['in_n']
         self.out_n = netParams['output_n']
         self.prob = netParams['prob'] #denotes whether or not this is a PNN
@@ -22,7 +21,6 @@ class Network(nn.Module):
         self.d = netParams['dropout']
         self.lr = trainParams['lr']
         self.pre = netParams['preprocess']
-        self.post = netParams['postprocess']
         self.epochs = netParams['epochs']
         loss = netParams['loss_fnc']
         self.sigmoid = nn.Sigmoid()
@@ -55,29 +53,27 @@ class Network(nn.Module):
         self.features = nn.Sequential(OrderedDict(layers))
 
         self.optimizer =  optim.Adam(super(Network, self).parameters(), lr=self.lr)
-
-    
-    def preProcess(self, inputs, outputs):
-        #normalize the input vectors
-        norm = self.preProcessIn(inputs)
-        self.scalarOutput.fit(outputs)
-        normOut = self.scalarOutput.transform(outputs)
-        return norm, normOut
     
     def preProcessIn(self, inputs):
-        self.scalarInput.fit(inputs)
-        norm = self.scalarInput.transform(inputs)
-        return norm
+        if self.pre:
+            self.scalarInput.fit(inputs)
+            norm = self.scalarInput.transform(inputs)
+            return norm
+        return inputs
 
     def postProcess(self, outputs):
         #depeneds what we are trying to do 
-        '''TODO: Finish this'''
+        if self.pre:
+            return self.scalarOutput.inverse_transform(outputs)
         return outputs
-    
+
     def forward(self, inputs):
-        x = self.features(inputs)
-        x = self.postProcess(x)
-        return x 
+        if self.pre:
+            inputs = self.preProcessIn(inputs)
+        outputs = self.features(inputs)
+        if self.pre:
+            outputs = self.postProcess(outputs)
+        return outputs
     
 
     def predict(self, input):
@@ -85,10 +81,9 @@ class Network(nn.Module):
             input = self.preProcessIn(input)
         input = torch.FloatTensor(input)
         x = self.features(input)
-        if self.prob:
-            mean = x.narrow(1, 0, self.out_n/2)
-            var = self.sigmoid(x.narrow(1, self.out_n/2, self.out_n/2))
-            x = torch.cat((mean, var), dim = 1)
+        if self.pre:
+            x = self.postProcess(x)
+        '''NO ACCOUNT FOR SELF.PROB'''
         return x
 
 
@@ -97,8 +92,6 @@ class Network(nn.Module):
         self.optimizer.zero_grad()
         lossTot = 0
         for i in range(self.epochs):
-            if self.pre:
-                inputs, outputs = self.preProcess(inputs ,outputs)
             out = self.predict(inputs)
             if self.loss_fnc != None: #MSELoss
                 assert advantages == None 

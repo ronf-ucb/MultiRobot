@@ -12,15 +12,15 @@ from agent import Agent
 from customAgent import CustomAgent 
 from MADDPGAgent import MADDPGAgent 
 from centralQ import CentralQ
+from centralQSARSA import CentralQSarsa
 
-GAMMA = .9
+GAMMA = .985
 
 algs = {
     1: "CUST_MADDPG_OPT",
     2: "MADDPG",
-    3: "CENTRAL_Q", #REMINDER: if choosing 3, make sure to only run the bridgeAgent.py in the launch file
 }
-ALGORITHM = 3
+ALGORITHM = 4
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
@@ -34,7 +34,6 @@ if description == "CUST_MADDPG_OPT":
                 'depth': 2,
                 'activation': nn.ReLU(),
                 'preprocess': False,
-                'postprocess': True,
                 'epochs': 1,
                 'loss_fnc': "policy_gradient",
                 'sigma': 1,
@@ -48,7 +47,6 @@ if description == "CUST_MADDPG_OPT":
                 'depth': 2,
                 'activation': nn.ReLU(),
                 'preprocess': False,
-                'postprocess': True,
                 'epochs': 1,
                 'loss_fnc': "MSE",
                 'dropout': .20 }             
@@ -83,7 +81,6 @@ if description == "MADDPG":
                 'depth': 2,
                 'activation': nn.ReLU(),
                 'preprocess': False,
-                'postprocess': True,
                 'epochs': 1,
                 'loss_fnc': "policy_gradient",
                 'sigma': 1,
@@ -97,7 +94,6 @@ if description == "MADDPG":
                 'depth': 2,
                 'activation': nn.ReLU(),
                 'preprocess': False,
-                'postprocess': True,
                 'epochs': 1,
                 'loss_fnc': "MSE",
                 'dropout': .10 }             
@@ -106,7 +102,7 @@ if description == "MADDPG":
                 'lambda': .5,
                 'horizon': 16,
                 'buffer': 1000,
-                'explore': .9, 
+                'explore': .1, #MAKE SURE THIS IS RIGHT
                 'lr': .0000001,
                 'gamma': GAMMA
                 }
@@ -122,40 +118,5 @@ if description == "MADDPG":
                             'numAgents': 2}
     params = {"actorParams": actPars, "valueParams": valuePars, "actorTrain": actorTrainPars, "valueTrain": valueTrainPars, "ROS": ROSparams}
     bridger = MADDPGAgent(params)
-if description == "CENTRAL_Q":
-    valuePars = {'prob': False,
-                'sigma': 1, #relative 
-                'trainMode': True,
-                'state_n': 11,
-                'output_n': 84, #-2,0,2 for each 4 legs plus 3 actions where corresponds: stop and unhook, stop and hook front, stop and hook back
-                'in_n': 11,
-                'hidden': 100,
-                'depth': 2,
-                'activation': nn.ReLU(),
-                'preprocess': False,
-                'postprocess': True,
-                'epochs': 1,
-                'loss_fnc': "MSE",
-                'dropout': .10 }             
-    valueTrainPars = {
-                'batch': 16,
-                'lr': .000001,
-                'gamma': GAMMA,
-                'alpha1': 1.5,
-                'alpha2': 6,
-                'alpha3': .1,
-                'lambda': 1,
-                'buffer': 1000,
-                'explore': .9, }
-    ROSparams = {'stateSub': "/bridger" ,
-                'subQueue': 1,
-                'actionPub': "/bridgerSubscribe",
-                'pubQueue': 1,
-                'tankPub': "tankerSubscribe",
-                'delta_t': .05,
-                'numAgents': 2}
-    params = { "valueParams": valuePars, "valueTrain": valueTrainPars, "ROS": ROSparams}
-    bridger = CentralQ(params)
-
 while(True):
     x = 1+1

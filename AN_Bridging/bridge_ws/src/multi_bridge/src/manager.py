@@ -29,6 +29,10 @@ class Manager():
             while(not self.failure and elapsed < maxTime):
                 curr = time.time()
                 elapsed = curr - start
+            if not self.failure: #timed out!
+                msg = Int8()
+                msg.data = 2
+                finish_pub.publish(msg)
             vrep.simxStopSimulation(clientID,vrep.simx_opmode_blocking)
             is_running = True
             while is_running:
@@ -46,8 +50,8 @@ class Manager():
             self.failure = True 
         return
 
-episodes = 700
-maxTime =  300
+episodes = 600
+maxTime =  100
 
 
 if __name__ == "__main__":
