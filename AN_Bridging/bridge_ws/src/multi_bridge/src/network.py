@@ -12,43 +12,38 @@ class Network(nn.Module):
     def __init__(self, netParams, trainParams):
         super(Network,self).__init__()
         self.in_n = netParams['in_n']
-        self.out_n = netParams['output_n']
-        self.prob = netParams['prob'] #denotes whether or not this is a PNN
-        self.noise_in = netParams['sigma'] 
+        self.out_n = netParams['out_n']
+        self.prob = netParams['prob']
         self.hidden_w = netParams['hidden']
         self.depth = netParams['depth']
-        self.activation = netParams['activation']
+        self.act = netParams['act']
         self.d = netParams['dropout']
         self.lr = trainParams['lr']
         self.pre = netParams['preprocess']
-        self.epochs = netParams['epochs']
         loss = netParams['loss_fnc']
         self.sigmoid = nn.Sigmoid()
 
         if self.prob:
             self.out_n *= 2
 
-        assert loss == "policy_gradient" or loss == "MSE"
-
         if loss == "policy_gradient":
             self.loss_fnc = None
         elif loss == "MSE":
             self.loss_fnc = nn.MSELoss()
 
-        self.scalarInput = StandardScaler() #or any of the other scalers...look into them 
-        self.scalarOutput = StandardScaler()
+        if self.pre:
+            self.scalarInput = StandardScaler() #or any of the other scalers...look into them 
+            self.scalarOutput = StandardScaler()
 
         layers = []
         layers.append(('dynm_input_lin', nn.Linear(
                 self.in_n, self.hidden_w)))       # input layer
-        layers.append(('dynm_input_act', self.activation))
+        layers.append(('dynm_input_act', self.act))
         layers.append(('dynm_input_dropout', nn.Dropout(p = self.d)))
         for d in range(self.depth):
             layers.append(('dynm_lin_'+str(d), nn.Linear(self.hidden_w, self.hidden_w)))
-            layers.append(('dynm_act_'+str(d), self.activation))
+            layers.append(('dynm_act_'+str(d), self.act))
             layers.append(('dynm_dropout_' + str(d), nn.Dropout(p = self.d)))
-
-
         layers.append(('dynm_out_lin', nn.Linear(self.hidden_w, self.out_n)))
         self.features = nn.Sequential(OrderedDict(layers))
 

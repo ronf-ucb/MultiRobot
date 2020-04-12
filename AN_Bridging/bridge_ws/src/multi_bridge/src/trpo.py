@@ -28,88 +28,30 @@ num_actions = 10
 #torch.set_default_tensor_type('torch.DoubleTensor')
 
 class TRPOAgent(Agent):
-    def __init__(self, params):
-        super(TRPOAgent,self).__init__(params)
-        self.policyNet = Network(params['actorParams'], params['actorTrain'])
-        self.bridgePub = rospy.Publisher(self.ROSParams["bridgePub"], Vector3, queue_size = 1)
+    def __init__(self, params, name = "", task):
+        super(TRPOAgent,self).__init__(params, name, task)
+        self.policyNet = Network(params['actPars'], params['actTrain'])
         self.running_state = ZFilter((num_inputs,), clip=5)
         self.running_reward = ZFilter((1,), demean=False, clip=10)
         self.experience = Memory()
+        task.initAgent(self)
         while(not self.stop):
             x = 1+1
-        
-        self.plotLoss(True, "Centralized Q Networks: Q Value Loss over Iterations")
-        self.plotRewards()
-        self.saveModel()
+        task.postTraining()
+    
+    def saveModel(self):
+        torch.save(self.valueNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/TRPOCritic.txt")
+        torch.save(self.policyNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/TRPOPolicy.txt")
+        print("Network saved")
 
-    def sendAction(self, state):
-        output = self.policyNet(torch.FloatTensor(state))
-        state = torch.from_numpy(state).unsqueeze(0)
-        action_mean = output[:, :self.u_n]
-        action_logstd = output[:, self.u_n:]
-        action_std = torch.exp(action_logstd)
-        action = (torch.normal(action_mean, action_std).detach().numpy()).ravel()
-        if action[self.u_n - 2]>0: #rope 
-            rope = 1 if action[self.u_n - 1] > 0 else 2
-        if action[self.u_n - 2]<=0: #neutral
-            rope = -1 if action[self.u_n - 1] >0 else 0
-        tankmsg = Vector3()
-        bridgemsg = Vector3()
-
-        tankmsg.x = action[0]
-        tankmsg.y = action[1]
-        tankmsg.z = rope 
-        bridgemsg.x = action[2]
-        bridgemsg.y = action[3]
-        self.tankPub.publish(tankmsg)
-        self.bridgePub.publish(bridgemsg)
-        return action.reshape(1,-1)
-
-    def receiveState(self, message):
-        floats = vrep.simxUnpackFloats(message.data)
-        self.goalPosition = np.array(floats[-4:-1])
-        failure = floats[-1]
-        state = (np.array(floats[:self.state_n])).reshape(1,-1)
-
-        if len(self.startDistance) == 0:
-            for i in range(self.agents_n): #assuming both states have same number of variables
-                pos = state[:, self.own_n*i:self.own_n*i + 3].ravel()
-                self.startDistance.append(np.sqrt(np.sum(np.square(pos - self.goalPosition))))
-        action = self.sendAction(state)
-        if type(self.prevState) == np.ndarray:
-            pen = 1 if self.prevAction[self.u_n - 2] > 0 else 0
-            r = np.array(self.rewardFunction(state, pen)).reshape(1,-1)
-            mask = 0 if failure == 1 else 1
-            self.experience.push(self.prevState, action, mask, state, r)
-            self.dataSize += 1
-        self.prevState = state
-        self.prevAction = action.ravel()    
-        state = state.ravel()
-        self.prevDeltas = [abs(state[0]) - abs(state[4]), abs(state[1]) - abs(state[5]), abs(state[3]) - abs(state[7])]
-        if self.trainMode and self.dataSize > self.batch_size:
-            batch = self.experience.sample()
-            self.update_params(batch)
-            #print('updated!')
-        self.manageStatus(failure)
-        return 
-   
-    def manageStatus(self, fail):
-        if fail == 1:
-            self.prevState = None 
-            self.prevAction = None
-            self.goalPosition = 0
-            self.startDistance = []
-            if self.trainIt > 0:
-                self.valueLoss.append((self.avgLoss)/self.trainIt)
-            self.avgLoss = 0    
-            self.trainIt = 0
-            for k in self.tankRun.keys():
-                self.tankRewards[k].append(self.tankRun[k])
-                self.bridgeRewards[k].append(self.bridgeRun[k])
-                self.tankRun[k] = 0
-                self.bridgeRun[k] = 0
-        else:
-            self.fail = False
+    def train(self):
+        batch = self.experience.sample()
+        self.update_params(batch)
+    
+    def store(self, prevS, prevA, r, s, a, failure):
+        mask = 0 if failure == 1 else 1
+        mask = 0 if failure == 1 else 1
+        self.experience.push(self.prev['S'], prevA, mask, state, r)
 
     def update_params(self, batch):
         rewards = torch.Tensor(batch.reward)
