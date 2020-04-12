@@ -21,7 +21,6 @@ class CentralQ(Agent):
         else:
             self.valueNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork.txt"))
 
-        self.explore = self.vTrain['explore']
         self.base = self.vTrain['baseExplore']
         self.decay = self.vTrain['decay']
         self.step = self.vTrain['step']
@@ -36,7 +35,7 @@ class CentralQ(Agent):
         task.postTraining()
     
 
-    def store(self, s, a, r, sprime, aprime = None):
+    def store(self, s, a, r, sprime, aprime = None, failure = 0):
         self.exp[self.dataSize % self.expSize] = np.hstack((s, a, r, sprime))
     
     def saveModel(self):

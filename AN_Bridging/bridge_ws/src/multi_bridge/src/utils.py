@@ -12,12 +12,12 @@ from collections import namedtuple
 
 ####### MISC ########
 
-def positiveWeightSampling(self, r):
+def positiveWeightSampling(r):
     sumExp = np.sum(np.exp(np.abs(5*r)))
     softmaxProbability = np.exp(np.abs(5*r))/sumExp
     return softmaxProbability.tolist()
 
-def distance(self, point1, point2):
+def distance(point1, point2):
     assert point1.size == point2.size
     squareSum = sum([(point1[i] - point2[i])**2 for i in range(point1.size)])
     return np.sqrt(squareSum)

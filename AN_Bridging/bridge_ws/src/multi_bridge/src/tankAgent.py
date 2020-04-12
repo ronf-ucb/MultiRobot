@@ -19,7 +19,6 @@ from bridgeTask import BridgeTask
 
 GAMMA = .95
 NAME = 'tanker'
-TASK = BridgeTask()
 
 algs = {
     1: "CUST_MADDPG_OPT",
@@ -176,7 +175,7 @@ if description == "CENTRAL_Q":
                 'gamma': GAMMA
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "agents": agents}
-    tanker = CentralQ(params, name = NAME, TASK)
+    tanker = CentralQ(params, NAME, BridgeTask("argmax"))
 
 if description == "CENTRAL_Q_SARSA":
 
@@ -210,12 +209,12 @@ if description == "CENTRAL_Q_SARSA":
                 'baseExplore': .15,
                 'decay': .75,
                 'step': 300,
-                'replayDim': 2*valuePars['in_n'] + 2 + 1,
+                'replayDim': 2*valPars['in_n'] + 2 + 1,
                 'QWeight': 0,
                 'gamma': GAMMA
                 }
     params = { "valPars": valPars, "valTrain": valTrain, "agents": agents}
-    tanker = CentralQSarsa(params, NAME, TASK)
+    tanker = CentralQSarsa(params, NAME, BridgeTask("argmax"))
 
 if description == "CENTRAL_TRPO":
     agents = {
@@ -261,9 +260,10 @@ if description == "CENTRAL_TRPO":
                 'alpha3': .2, 
                 'lambda': 1,
                 'gamma': GAMMA, 
+                'explore': 1,
                 }
     params = {"actPars": actPars, "valPars": valPars, "actTrain": actTrain, "valTrain": valTrain, "agents": agents}
-    tanker = TRPOAgent(params, NAME, TASK)
+    tanker = TRPOAgent(params, NAME, BridgeTask("p_policy"))
 
 while(True):
     x = 1+1

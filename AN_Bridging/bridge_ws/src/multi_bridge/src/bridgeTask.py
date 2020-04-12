@@ -4,11 +4,14 @@ from task import Task
 from utils import distance
 import numpy as np 
 import torch 
-import torch.nn as nn 
+import torch.nn as nn
+import vrep
+from std_msgs.msg import String, Int8
+from geometry_msgs.msg import Vector3
 
 class BridgeTask(Task):
     def __init__(self, action):
-        super(bridgeTask, self).__init__(action)
+        super(BridgeTask, self).__init__(action)
         self.prev = {"S": None, "A": None, "D": None}
         self.actionMap = {0: (-3,-1), 1:(-1,-3), 2:(-3,-3), 3:(1,3), 4:(3,3), 5:(3,1), 6:(0,0)}
         self.tankRewards = {"velocity": [], "location": [], "relativeLocation": [], "orientation": [], "relativeOrientation":[] , "total": []}
@@ -32,9 +35,12 @@ class BridgeTask(Task):
         self.u_n = self.agent.u_n
         self.agents = self.agent.agents
         self.state_n = self.agent.state_n
+        self.explore = self.agent.explore
+        self.pubs = self.agent.pubs
+        self.trainMode = self.agent.trainMode
     
     ############# SEND ACTION #################
-   def sendAction(self, s):
+    def sendAction(self, s):
         if self.a == "argmax":
             q = self.valueNet.predict(s)
             i = np.random.random()
@@ -45,10 +51,9 @@ class BridgeTask(Task):
             tank, bridge = self.index_to_action(index)
             self.pubs['tanker'].publish(tank)
             self.pubs['bridger'].publish(bridge)
-            return np.array([index]).reshape(1,-1), self.prev["A"] >= 50
+            return np.array([index]).reshape(1,-1), index >= (self.u_n - 2)
         if self.a == "p_policy":
-            output = self.policyNet(torch.FloatTensor(state))
-            state = torch.from_numpy(state).unsqueeze(0)
+            output = self.policyNet(torch.FloatTensor(s))
             action_mean = output[:, :self.u_n]
             action_logstd = output[:, self.u_n:]
             action_std = torch.exp(action_logstd)
@@ -67,7 +72,7 @@ class BridgeTask(Task):
             bridgemsg.y = action[3]
             self.pubs['tanker'].publish(tankmsg)
             self.pubs['bridger'].publish(bridgemsg)
-            return action.reshape(1,-1), self.prev["A"[self.u_n -2]] > 0
+            return action.reshape(1,-1), action[self.u_n -2] > 0
         return 
 
     def index_to_action(self, index):
@@ -90,7 +95,7 @@ class BridgeTask(Task):
         return (tankmsg, bridgemsg)
 
     ########## REWARD FUNCTION ###############
-   def rewardFunction(self, s, usedRope): 
+    def rewardFunction(self, s, usedRope): 
         s = s.ravel()
         
         r = self.checkPhase(s)
@@ -148,7 +153,7 @@ class BridgeTask(Task):
         self.bridgeRun['total'] += reward
         return reward
 
-   def checkPhase(self, state):
+    def checkPhase(self, state):
         pos0 = np.array(state[:3])
         pos1 = np.array(state[self.agents[self.name]["n"]: self.agents[self.name]["n"] + 3])
         if distance(pos0, self.goal) <.03 or distance(pos1, self.goal) <.03:
@@ -197,14 +202,14 @@ class BridgeTask(Task):
         if type(self.prev["S"]) == np.ndarray:
             penalty = 1 if useRope else 0
             r = np.array(self.rewardFunction(s, penalty)).reshape(1,-1)
-            self.store(self.prev['S'], self.prev["A"], r, s, i, failure)
-            self.dataSize += 1
+            self.agent.store(self.prev['S'], self.prev["A"], r, s, i, fail)
+            self.agent.dataSize += 1
         self.prev["S"] = s
         self.prev["A"] = i
         s = s.ravel()
         self.prev["D"] = [abs(s[0]) - abs(s[4]), abs(s[1]) - abs(s[5]), abs(s[3]) - abs(s[7])]
-        if self.trainMode:
-            self.train()
+        if self.trainMode and self.agent.dataSize > self.agent.batch_size:
+            self.agent.train()
         self.restartProtocol(fail)
         return 
 

@@ -5,16 +5,16 @@ from centralQ import CentralQ
 import torch
 
 class CentralQSarsa(CentralQ):
-    def __init__(self, params, name = ""):
+    def __init__(self, params, name, task):
         assert params['valTrain']['batch'] == params['valTrain']['buffer']
         self.QWeight = params['valTrain']['QWeight']
-        super(CentralQSarsa, self).__init__(params, name)
+        super(CentralQSarsa, self).__init__(params, name, task)
     
     def saveModel(self):
         torch.save(self.valueNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QSARSANetwork2.txt")
         print("Network saved")
 
-    def store(self, s, a, r, sprime, aprime = None):
+    def store(self, s, a, r, sprime, aprime = None, failure = 0):
         self.exp[self.dataSize % self.expSize] = np.hstack((s, a, r, sprime, aprime))
 
     def train(self):
@@ -27,7 +27,7 @@ class CentralQSarsa(CentralQ):
             nextActions = data[:, -1:]
 
             if self.replaceCounter % 20 == 0:
-                self.targetNetwork.load_state_dict(self.valueNet.state_dict())
+                self.tarNet.load_state_dict(self.valueNet.state_dict())
             self.replaceCounter += 1
 
 
@@ -38,8 +38,8 @@ class CentralQSarsa(CentralQ):
             q = torch.gather(qValues, 1, torch.LongTensor(actions)) #get q values of actions
             
             processedNextStates = self.valueNet.preProcessIn(nextStates) #preprocess
-            qnext = self.targetNetwork(torch.FloatTensor(processedNextStates)).detach() #pass in
-            qnext = self.targetNetwork.postProcess(qnext) #postprocess
+            qnext = self.tarNet(torch.FloatTensor(processedNextStates)).detach() #pass in
+            qnext = self.tarNet.postProcess(qnext) #postprocess
             qmax = qnext.max(1)[0].view(self.batch_size, 1)
             qnext = torch.gather(qnext, 1, torch.LongTensor(nextActions)).detach()
             qtar = torch.FloatTensor(rewards) + self.discount * ((self.QWeight * qmax) + ((1-self.QWeight) * qnext))

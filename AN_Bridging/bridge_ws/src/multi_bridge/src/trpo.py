@@ -28,11 +28,11 @@ num_actions = 10
 #torch.set_default_tensor_type('torch.DoubleTensor')
 
 class TRPOAgent(Agent):
-    def __init__(self, params, name = "", task):
+    def __init__(self, params, name, task):
         super(TRPOAgent,self).__init__(params, name, task)
         self.policyNet = Network(params['actPars'], params['actTrain'])
         self.running_state = ZFilter((num_inputs,), clip=5)
-        self.running_reward = ZFilter((1,), demean=False, clip=10)
+        self.running_reward = ZFilter((1,), demean=False, clip=10) 
         self.experience = Memory()
         task.initAgent(self)
         while(not self.stop):
@@ -50,8 +50,7 @@ class TRPOAgent(Agent):
     
     def store(self, prevS, prevA, r, s, a, failure):
         mask = 0 if failure == 1 else 1
-        mask = 0 if failure == 1 else 1
-        self.experience.push(self.prev['S'], prevA, mask, state, r)
+        self.experience.push(prevS, prevA, mask, s, r)
 
     def update_params(self, batch):
         rewards = torch.Tensor(batch.reward)

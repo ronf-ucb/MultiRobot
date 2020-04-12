@@ -32,6 +32,7 @@ class Agent(object):
         self.prob = self.vPars['prob']
         self.u_n = self.vPars['u_n']
         self.trainMode = self.vPars['trainMode']
+        self.explore = self.vTrain['explore']
 
         self.dataSize = 0 #number of data tuples we have accumulated so far
         self.stop = False
