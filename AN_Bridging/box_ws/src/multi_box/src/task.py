@@ -15,7 +15,6 @@ class Task(object):
         self.agent = agent 
         self.extractInfo()
         self.init = True  
-    
 
     def extractInfo(self):
         pass

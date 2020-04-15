@@ -20,8 +20,7 @@ class BridgeTask(Task):
         self.bridgeRun = {"velocity": 0, "location": 0, "relativeLocation": 0, "orientation": 0, "relativeOrientation": 0, "total":0}
     
         self.phases = [False, False, False] #bridge, across, pull
-        self.valueLoss = []
-        self.goal, self.avgLoss, self.trainIt = (0,0,0)
+        self.goal = 0
 
     
     ######### EXTRACT INFO ###########
@@ -219,10 +218,10 @@ class BridgeTask(Task):
             for k in self.prev.keys():
                 self.prev[k] = None
             self.goal = 0
-            if self.trainIt > 0:
-                self.valueLoss.append((self.avgLoss)/self.trainIt)
-            self.avgLoss = 0    
-            self.trainIt = 0
+            if self.agent.trainIt > 0:
+                self.agent.valueLoss.append((self.agent.avgLoss)/self.agent.trainIt)
+            self.agent.avgLoss = 0    
+            self.agent.trainIt = 0
             for k in self.tankRun.keys():
                 self.tankRewards[k].append(self.tankRun[k])
                 self.bridgeRewards[k].append(self.bridgeRun[k])
@@ -236,7 +235,7 @@ class BridgeTask(Task):
         self.saveModel()
     
     def plotLoss(self, valueOnly = False, title1 = "Critic Loss over Iterations", title2 = "Actor Loss over Iterations"):
-        plt.plot(range(len(self.valueLoss)), self.valueLoss)
+        plt.plot(range(len(self.agent.valueLoss)), self.agent.valueLoss)
         plt.title(title1)
         plt.show()
         if not valueOnly:
