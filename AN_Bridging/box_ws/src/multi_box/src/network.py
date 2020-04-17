@@ -36,51 +36,45 @@ class Network(nn.Module):
             self.scalarInput = StandardScaler() #or any of the other scalers...look into them 
             self.scalarOutput = StandardScaler()
 
-        layers = []
-        layers.append(('dynm_input_lin', nn.Linear(
-                self.in_n, self.hidden_w)))       # input layer
-        layers.append(('dynm_input_act', self.act))
-        layers.append(('dynm_input_dropout', nn.Dropout(p = self.d)))
-        for d in range(self.depth):
-            layers.append(('dynm_lin_'+str(d), nn.Linear(self.hidden_w, self.hidden_w)))
-            layers.append(('dynm_act_'+str(d), self.act))
-            layers.append(('dynm_dropout_' + str(d), nn.Dropout(p = self.d)))
-        layers.append(('dynm_out_lin', nn.Linear(self.hidden_w, self.out_n)))
-        self.features = nn.Sequential(OrderedDict(layers))
+        self.createFeatures()
 
         self.optimizer =  optim.Adam(super(Network, self).parameters(), lr=self.lr, weight_decay = self.l2)
     
+    def createFeatures(self):
+        layers = []
+        layers.append(('input_lin', nn.Linear(
+                self.in_n, self.hidden_w)))       # input layer
+        layers.append(('input_act', self.act))
+        layers.append(('input_dropout', nn.Dropout(p = self.d)))
+        for d in range(self.depth):
+            layers.append(('lin_'+str(d), nn.Linear(self.hidden_w, self.hidden_w)))
+            layers.append(('act_'+str(d), self.act))
+            layers.append(('dropout_' + str(d), nn.Dropout(p = self.d)))
+        layers.append(('out_lin', nn.Linear(self.hidden_w, self.out_n)))
+        self.features = nn.Sequential(OrderedDict(layers))
+    
     def preProcessIn(self, inputs):
         if self.pre:
-            self.scalarInput.fit(inputs)
-            norm = self.scalarInput.transform(inputs)
+            norm = inputs * 20 
+            '''FOR NOW. Works because we get more distinction between points. Will do normalization eventually using ZScale'''
             return norm
         return inputs
 
     def postProcess(self, outputs):
         #depeneds what we are trying to do 
         if self.pre:
-            return self.scalarOutput.inverse_transform(outputs)
+            return outputs 
+            '''FOR NOW'''
         return outputs
 
     def forward(self, inputs):
+        inputs = torch.FloatTensor(inputs)
         if self.pre:
             inputs = self.preProcessIn(inputs)
         outputs = self.features(inputs)
         if self.pre:
             outputs = self.postProcess(outputs)
         return outputs
-    
-
-    def predict(self, input):
-        if self.pre:
-            input = self.preProcessIn(input)
-        input = torch.FloatTensor(input)
-        x = self.features(input)
-        if self.pre:
-            x = self.postProcess(x)
-        '''NO ACCOUNT FOR SELF.PROB'''
-        return x
 
 
     def train_cust(self, inputs, outputs, advantages = None):
@@ -88,7 +82,7 @@ class Network(nn.Module):
         self.optimizer.zero_grad()
         lossTot = 0
         for i in range(self.epochs):
-            out = self.predict(inputs)
+            out = self.forward(inputs)
             if self.loss_fnc != None: #MSELoss
                 assert advantages == None 
                 loss = self.loss_fnc(out, outputs)

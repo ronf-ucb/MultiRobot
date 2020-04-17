@@ -10,6 +10,7 @@ from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
 import vrep
 import matplotlib.pyplot as plt
+from dualNetwork import DualNetwork
 
 class Agent(object):
     def __init__(self, params, name, task):
@@ -18,7 +19,11 @@ class Agent(object):
         self.vPars = params['valPars']
         self.vTrain = params['valTrain']
         self.agents = params['agents']
-        self.valueNet = Network(self.vPars, self.vTrain)
+        self.dual = self.vPars['dual']
+        if self.dual:
+            self.valueNet = DualNetwork(self.vPars, self.vTrain)
+        else:
+            self.valueNet = Network(self.vPars, self.vTrain)
         rospy.Subscriber("/finished", Int8, self.receiveDone, queue_size = 1)
         self.pubs = {}
         for key in self.agents.keys():

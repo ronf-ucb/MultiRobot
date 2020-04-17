@@ -22,7 +22,7 @@ class CentralQSarsa(CentralQ):
             data = self.exp
             states = data[:, :self.state_n]
             actions = data[:, self.state_n: self.state_n + 1]
-            rewards = data[: self.state_n + 1: self.state_n + 2]
+            rewards = data[: ,self.state_n + 1: self.state_n + 2]
             nextStates = data[:, -(self.state_n + 1):-1]
             nextActions = data[:, -1:]
 
@@ -38,7 +38,8 @@ class CentralQSarsa(CentralQ):
             qnext = self.tarNet(torch.FloatTensor(nextStates)).detach() #pass in
             qmax = qnext.max(1)[0].view(self.batch_size, 1)
             qnext = torch.gather(qnext, 1, torch.LongTensor(nextActions)).detach()
-            qtar = torch.FloatTensor(rewards) + self.discount * ((self.QWeight * qmax) + ((1-self.QWeight) * qnext))
+            qtar = self.discount * ((self.QWeight * qmax) + ((1-self.QWeight) * qnext))
+            qtar = torch.FloatTensor(rewards) + qtar 
             loss = self.valueNet.loss_fnc(q, qtar)
 
             self.valueNet.optimizer.zero_grad()

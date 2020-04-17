@@ -17,7 +17,7 @@ torch.utils.backcompat.broadcast_warning.enabled = True
 torch.utils.backcompat.keepdim_warning.enabled = True
 
 tau = .97
-l2Reg = 1e-3
+l2Reg = 2e-2
 maxKL = 1e-2
 damping = 1e-1
 batch = 128

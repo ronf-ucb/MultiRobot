@@ -2,14 +2,14 @@
 
 class Task(object):
     def __init__(self, action):
-        assert action == "argmax" or action == "p_policy"
+        assert action == "argmax" or action == "p_policy" or action == "d_policy"
         self.a = action
         self.init = False
         
     def initAgent(self, agent):
         if self.a == "argmax":
             self.valueNet = agent.valueNet
-        if self.a == "p_policy":
+        if self.a == "p_policy" or self.a == "d_policy":
             self.policyNet = agent.policyNet
 
         self.agent = agent 

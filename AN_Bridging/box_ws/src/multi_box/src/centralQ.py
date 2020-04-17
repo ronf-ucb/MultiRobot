@@ -12,12 +12,16 @@ import vrep
 import matplotlib.pyplot as plt
 from agent import Agent
 from utils import positiveWeightSampling
+from dualNetwork import DualNetwork
 
 class CentralQ(Agent):
     def __init__(self, params, name, task):
         super(CentralQ, self).__init__(params, name, task)
         if self.trainMode:
-            self.tarNet = Network(self.vPars, self.vTrain)
+            if self.dual:
+                self.tarNet = DualNetwork(self.vPars, self.vTrain)
+            else:
+                self.tarNet = Network(self.vPars, self.vTrain)
         else:
             self.valueNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork.txt"))
 
@@ -45,8 +49,9 @@ class CentralQ(Agent):
         self.exp[self.dataSize % self.expSize] = np.hstack((s, a, r, sprime))
     
     def saveModel(self):
-        torch.save(self.valueNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNet_box.txt")
-        print("Network saved")
+        #torch.save(self.valueNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNet_box.txt")
+        #print("Network saved")
+        pass
         
     def train(self):
         if self.dataSize > self.batch_size:

@@ -51,8 +51,8 @@ class Manager():
             self.failure = True 
         return
 
-episodes = 20
-maxTime =  80
+episodes = 15
+maxTime =  60
 
 
 if __name__ == "__main__":

@@ -220,12 +220,17 @@ Transition = namedtuple('Transition', ('state', 'action', 'mask', 'next_state',
 
 
 class Memory(object):
-    def __init__(self):
+    def __init__(self, size):
         self.memory = []
+        self.size = size
+        self.curr = 0
 
     def push(self, *args):
         """Saves a transition."""
         self.memory.append(Transition(*args))
+        self.curr += 1
+        if self.curr >= self.size:
+            del self.memory[0]
 
     def sample(self):
         return Transition(*zip(*self.memory))
