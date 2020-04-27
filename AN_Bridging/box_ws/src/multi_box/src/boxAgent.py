@@ -5,17 +5,16 @@ import numpy as np
 import torch 
 import torch.nn as nn
 import math 
-from network import Network
 import rospy
 from std_msgs.msg import String, Int8
 from geometry_msgs. msg import Vector3
-from agent import Agent
-from centralQSARSA import CentralQSarsa
-from centralQ import CentralQ
-from trpo import TRPOAgent
 from collections import OrderedDict
-from boxTask import BoxTask
-from DDPG import DDPG
+
+from Algs.QSARSA import CentralQSarsa
+from Algs.doubleQ import DoubleQ
+from Algs.trpo import TRPOAgent
+from Algs.TD3 import Twin_DDPG
+from Tasks.boxTask import BoxTask
 
 
 GAMMA = .985
@@ -27,7 +26,7 @@ algs = {
     5: "CENTRAL_TRPO",
     6: "CENTRAL_DDPG"
 }
-ALGORITHM = 3
+ALGORITHM = 6
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
@@ -39,17 +38,15 @@ if description == "CENTRAL_Q":
 
     valPars = {
                 'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'u_n': sum([agents[key]["u"] for key in agents.keys()]),
                 'out_n': sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': 256,
+                'hidden': [256,256,256],
                 'dual': False,
-                'depth': 3,
-                'act': nn.ReLU(),
+                'act': [ nn.ReLU(), nn.ReLU(), nn.ReLU()],
                 'preprocess': True, 
                 'prob': False,
                 'trainMode': True,
                 'loss_fnc': "MSE",
-                'dropout': .10 
+                'dropout': [.10,.10,.10] 
                 }             
     valTrain = {
                 'batch': 16,
@@ -62,7 +59,6 @@ if description == "CENTRAL_Q":
                 'baseExplore': .1,
                 'decay': .6,
                 'step': 50,
-                'replayDim': 2*valPars['in_n'] + 1 + 1,
                 'double': True,
                 'prioritySample': True,
                 'a': 1,
@@ -79,17 +75,15 @@ if description == "CENTRAL_Q_SARSA":
             }
     valPars = {
                 'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'u_n': sum([agents[key]["u"] for key in agents.keys()]),
                 'out_n': sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': 256,
+                'hidden': [256,256,256],
                 'dual': False,
-                'depth': 3,
-                'act': nn.ReLU(),
+                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU()],
                 'preprocess': True, #makes no sense really
                 'prob': False,
                 'trainMode': True,
                 'loss_fnc': "MSE",
-                'dropout': .10 
+                'dropout': [.10 ,.10 ,.10 ]
                 }             
     valTrain = {
                 'batch': 1,
@@ -106,7 +100,6 @@ if description == "CENTRAL_Q_SARSA":
                 'decay': .75,
                 'step': 75,
                 'l2': .02,
-                'replayDim': 2*valPars['in_n'] + 2 + 1,
                 'QWeight': 0,
                 'gamma': GAMMA
                 }
@@ -121,25 +114,22 @@ if description == "CENTRAL_TRPO":
     actPars = {
                 'in_n': sum([agents[key]["n"] for key in agents.keys()]),
                 'out_n': sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden': 256, 
-                'depth': 3, 
-                'act': nn.ReLU(),
+                'hidden': [256,256,256], 
+                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU()],
                 'preprocess': True, 
                 'prob': True,
                 'double' :False,
                 'prioritySample': False,
                'dual': False,
                 'a': 0,
-                'dropout': .1, 
+                'dropout': [.1,.1,.1], 
                 'loss_fnc': "",
             }
     valPars = {
                 'in_n': actPars['in_n'], 
-                'u_n': actPars['out_n'],
                 'out_n': 1, 
-                'hidden': 200, 
-                'depth': 3, 
-                'act': nn.ReLU(), 
+                'hidden': [200,200,200], 
+                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU()], 
                 'preprocess': False, 
                 'prob': False, 
                 'trainMode': True,
@@ -147,7 +137,7 @@ if description == "CENTRAL_TRPO":
                 'prioritySample': False,
                 'dual': False,
                 'a': 0,
-                'dropout': .10,
+                'dropout': [.10,.10,.10],
                 'loss_fnc': ""
                 }
     actTrain = { 
@@ -171,7 +161,7 @@ if description == "CENTRAL_TRPO":
     tanker = TRPOAgent(params, NAME, BoxTask("p_policy"))
 
 if description == "CENTRAL_DDPG":
-    tau = .02
+    tau = .01
     agents = OrderedDict({
                 #ensure ordering matches ros messages
                 "bot": {"n": 12, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
@@ -179,31 +169,28 @@ if description == "CENTRAL_DDPG":
 
     valPars = {
                 'in_n': sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
-                'u_n': sum([agents[key]["u"] for key in agents.keys()]),
                 'out_n': 1, #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': 256,
+                'hidden': [256,256,256,256],
                 'dual': False,
-                'depth': 3,
                 'tau': tau,
-                'act': nn.ReLU(),
+                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU(), nn.ReLU()],
                 'preprocess': True, 
                 'prob': False,
                 'trainMode': True,
                 'loss_fnc': "MSE",
-                'dropout': .10 
+                'dropout': [.10 , .10, .10, .10]
                 }        
     valTrain = {
-                'batch': 32,
-                'lr': 1e-5,
-                'w_phase1': 25,
+                'batch': 64,
+                'lr': 1e-3,
+                'w_phase1': 125,
                 'w_phase2': 100,
                 'w_phase3': 50,
                 'buffer': 3000,
-                'explore': (1, .25), #probability and sigma
-                'baseExplore': .15,
-                'decay': 0,
+                'explore': (1, .3), #probability and sigma
+                'baseExplore': .20,
+                'decay': .90,
                 'step': 200,
-                'replayDim': 2*valPars['in_n'] - valPars['u_n'] + 1,
                 'prioritySample': True,
                 'a': 1,
                 'l2': .01,
@@ -212,13 +199,11 @@ if description == "CENTRAL_DDPG":
     actPars = {
                 'in_n': sum([agents[key]["n"] for key in agents.keys()]),
                 'out_n': sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden': 256, 
-                'depth': 3, 
-                'act': nn.ReLU(),
+                'hidden': [256, 256, 256, 256], 
+                'act': [ nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.ReLU()],
                 'preprocess': True, 
                 'prob': False,
-                'prioritySample': False,
-                'dropout': .1, 
+                'dropout': [.1,.1,.1, .1], 
                 'loss_fnc': "",
             }
     actTrain = { 
@@ -227,7 +212,7 @@ if description == "CENTRAL_DDPG":
                 'gamma': GAMMA
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
-    tanker = DDPG(params, NAME, BoxTask("d_policy"))
+    tanker = Twin_DDPG(params, NAME, BoxTask("d_policy"))
 
 while(True):
     x = 1+1

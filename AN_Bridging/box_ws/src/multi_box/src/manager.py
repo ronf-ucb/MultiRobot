@@ -9,7 +9,7 @@ import time
 class Manager():
     def __init__(self):
         rospy.init_node('Dummy', anonymous = True)
-        rospy.Subscriber("/failure", Int8, self.receiveStatus, queue_size = 1)
+        rospy.Subscriber("/restart", Int8, self.receiveStatus, queue_size = 1)
         fin = rospy.Publisher('/finished', Int8, queue_size = 1)
         vrep.simxFinish(-1) #clean up the previous stuff
         clientID = vrep.simxStart('127.0.0.1', 19997, True, True, 5000, 5)
@@ -25,12 +25,12 @@ class Manager():
             if not first and r != 0:
                 r = vrep.simxStartSimulation(clientID, vrep.simx_opmode_oneshot)
             start = time.time()
-            self.failure = False
+            self.restart = False
             elapsed = 0
-            while(not self.failure and elapsed < maxTime):
+            while(not self.restart and elapsed < maxTime):
                 curr = time.time()
                 elapsed = curr - start
-            if not self.failure: #timed out!
+            if not self.restart: #timed out!
                 msg = Int8()
                 msg.data = 2
                 fin.publish(msg)
@@ -42,17 +42,18 @@ class Manager():
                 is_running = server_state & 1
             counter += 1
             first = False
+        time.sleep(2)
         msg = Int8()
         msg.data = 1
         fin.publish(msg)
 
     def receiveStatus(self, message):
-        if message.data == 1: #failure 
-            self.failure = True 
+        if message.data == 1: #restart
+            self.restart = True 
         return
 
-episodes = 15
-maxTime =  60
+episodes = 100
+maxTime =  500  
 
 
 if __name__ == "__main__":
