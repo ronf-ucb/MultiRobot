@@ -24,6 +24,7 @@ class Manager():
             r = 1 
             if not first and r != 0:
                 r = vrep.simxStartSimulation(clientID, vrep.simx_opmode_oneshot)
+            time.sleep(3)
             start = time.time()
             self.restart = False
             elapsed = 0
@@ -52,7 +53,7 @@ class Manager():
             self.restart = True 
         return
 
-episodes = 100
+episodes = 500
 maxTime =  500  
 
 

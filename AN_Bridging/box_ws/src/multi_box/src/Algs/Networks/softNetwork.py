@@ -10,45 +10,20 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import torch.optim as optim
 from collections import OrderedDict
+from network import Network
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, QuantileTransformer
 
-class Network(nn.Module):
+class SoftNetwork(Network):
     def __init__(self, netParams, trainParams):
-        super(Network,self).__init__()
-        self.in_n = netParams['in_n']
-        self.out_n = netParams['out_n'] * 2
-        self.hidden_w = netParams['hidden']
-        self.mean_w = netParams['mean_width']
-        self.std_w = netParams['std_width']
-        self.act = netParams['act']
-
-        self.d = netParams['dropout']
-        self.lr = trainParams['lr']
-        self.pre = netParams['preprocess']
-        self.l2 = trainParams['l2']
+        self.mean_w     = netParams['mean_width']
+        self.std_w      = netParams['std_width']
+        self.mean_range = netParams['mean_range']
         self.clamp = trainParams['clamp']
-        loss = netParams['loss_fnc']
-        self.manual = trainParams['manual']
-
-        if self.manual:
-            self.mean = trainParams['mean']
-            self.variance = trainParams['variance']
-
-        if loss == "MSE":
-            self.loss_fnc = nn.MSELoss()
-
-        self.createFeatures()
-        self.mean_lin = nn.Linear(self.mean_w, self.out_n)
-        self.std_lin = nn.Linear(self.mean_w, self.out_n)
-        nn.init.xavier_uniform_(self.mean_lin.weight, gain = nn.init.calculate_gain('relu'))
-        nn.init_xavier_uniform_(self.std_lin.weight, gain = nn.init.calculate_gain('relu'))
-
-        self.optimizer =  optim.Adam(super(Network, self).parameters(), lr=self.lr, weight_decay = self.l2)
-    
-    def init_weights(self, m):
-        if type(m) == nn.Linear:
-            torch.nn.init.xavier_uniform_(m.weight, gain = nn.init.calculate_gain('relu'))
-
+        super(SoftNetwork,self).__init__(netParams, trainParams)
+        self.mean_lin   = nn.Linear(self.mean_w, int(self.out_n/2))
+        self.std_lin    = nn.Linear(self.mean_w, int(self.out_n/2))
+        self.init_weights(self.mean_lin)
+        self.init_weights(self.std_lin)
     
     def createFeatures(self):
         layers = []
@@ -56,18 +31,21 @@ class Network(nn.Module):
                 self.in_n, self.hidden_w[0])))       # input layer
         layers.append(('input_act', self.act[0]))
         layers.append(('input_dropout', nn.Dropout(p = self.d[0])))
+        layers.append(('norm_in', nn.LayerNorm(self.hidden_w[0])))
         for d in range(1, len(self.hidden_w)):
             layers.append(('lin_'+str(d), nn.Linear(self.hidden_w[d-1], self.hidden_w[d])))
             layers.append(('act_'+str(d), self.act[d]))
             layers.append(('dropout_' + str(d), nn.Dropout(p = self.d[d])))
+            layers.append(('norm_'+str(d), nn.LayerNorm(self.hidden_w[d])))
         layers.append(('out_lin', nn.Linear(self.hidden_w[len(self.hidden_w) - 1], self.mean_w))) # THIS IS DIFFERENT
+        layers.append(('out_norm', nn.LayerNorm(self.mean_w)))
         self.features = nn.Sequential(OrderedDict(layers))
         self.features.apply(self.init_weights)
     
     def preProcessIn(self, inputs):
         if self.pre:
             if self.manual:
-                norm = torch.FloatTensor(5*(inputs - self.mean) / self.variance)
+                norm = torch.FloatTensor((inputs - self.mean) / self.variance)
             else:
                 norm = inputs * 10
             return norm
@@ -78,14 +56,21 @@ class Network(nn.Module):
         if self.pre:
             inputs = self.preProcessIn(inputs)
         outputs = self.features(inputs)
-        mean = F.relu(self.mean_lin(outputs))
-        
-        log_std = F.relu(self.std_lin(outputs))
-        log_std = torch.clamp(log_std, -self.clamp, self.clamp)
+        mean = self.mean_lin(outputs)
+        log_std = self.std_lin(outputs)
+
+        log_std = torch.clamp(log_std, self.clamp[0], self.clamp[1])
         std = log_std.exp()
-        normal = Normal(0,1)
-        z = normal.sample()
-        action = torch.tanh(mean + std*z)
-        log_prob = Normal(mean, std).log_prob(mean + std*z) - torch.log(1-action.pow(2) + 1e-6)
+
+        normal = Normal(mean, std)
+        z = normal.rsample()
+        action = torch.tanh(z)
+        
+        log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
+        log_prob = log_prob.reshape(-1, int(self.out_n/2))
+        log_prob = log_prob.sum(1, keepdim = True)
+
+        action = self.mean_range * action
         return action, log_prob
+    
 

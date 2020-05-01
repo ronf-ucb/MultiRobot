@@ -12,168 +12,258 @@ from collections import OrderedDict
 from Algs.doubleQ import DoubleQ
 from Algs.TD3 import Twin_DDPG
 from Algs.A2C import A2C
-from Tasks.goalSetTask import GoalSetTask
+from Algs.SoftActorCritic import SAC
+from Tasks.moveTask import MoveTask
 
-
-GAMMA = .985
 NAME = 'bot'
 
 algs = {
     3: "DOUBLE_Q", #REMINDER: if choosing 3, make sure to only run the tankAgent.py in the launch file
     5: "TWIN_DDPG",
-    6: "A2C"
+    6: "A2C",
+    7: "SAC"
 }
-ALGORITHM = 5
+ALGORITHM = 7
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
 if description == "DOUBLE_Q":
     agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot": {"n": 2, "u": 7 ,"sub": "/state", "pub": "/action"}
+                "bot":          {"n": 2, "u": 7 ,"sub": "/state", "pub": "/action"}
             })
     valPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S
-                'hidden': [256, 256],
-                'dual': False,
-                'act': [nn.LeakyReLU(),nn.LeakyReLU(),nn.LeakyReLU()],
-                'preprocess': True, 
-                'prob': False,
-                'trainMode': True,
-                'loss_fnc': "MSE",
-                'dropout': [.2,.2,.2]
+                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
+                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S
+                'hidden':       [256, 256],
+                'dual':         False,
+                'act':          [nn.LeakyReLU(),nn.LeakyReLU(),nn.LeakyReLU()],
+                'preprocess':   True, 
+                'prob':         False,
+                'trainMode':    True,
+                'loss_fnc':     "MSE",
+                'dropout':      [0,0,0]
                 }             
     valTrain = {
-                'batch': 16,
-                'lr': 1e-6,
-                'buffer': 3000,
-                'explore': .4, 
+                'batch':        16,
+                'lr':           1e-6,
+                'buffer':       3000,
+                'explore':      .4, 
                 'baseExplore': .05,
-                'decay': .8,
-                'step': 50,
-                'double': True,
+                'decay':        .8,
+                'step':         50,
+                'double':       True,
                 'prioritySample': True,
-                'manual': False,
-                'a': 1,
-                'l2': .1,
-                'gamma': GAMMA
+                'manual':       False,
+                'a':            1,
+                'l2':           .1,
+                'gamma':        GAMMA
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "agents": agents}
-    tanker = DoubleQ(params, NAME, GoalSetTask("argmax"))
+    tanker = DoubleQ(params, NAME, MoveTask("argmax"))
 
 if description == "TWIN_DDPG":
-    tau = .01
+
     agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot": {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
+                "bot":          {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
             })
 
     valPars = {
-                'in_n': sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
-                'out_n': 1, #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': [256, 256, 256],
-                'dual': False,
-                'tau': tau,
-                'act': [nn.LeakyReLU(),nn.LeakyReLU(), nn.LeakyReLU()],
-                'preprocess': True, 
-                'prob': False,
-                'trainMode': True,
-                'loss_fnc': "MSE",
-                'dropout': [.1, .1, .1]
+                'in_n':         sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
+                'out_n':        1,
+                'hidden':       [256, 256, 256],#used 128 most recently 
+                'dual':         False,
+                'tau':          .005,
+                'act':          [nn.LeakyReLU(),nn.LeakyReLU(), nn.LeakyReLU()],
+                'preprocess':   True, 
+                'prob':         False,
+                'trainMode':    True,
+                'load':         False,
+                'loss_fnc':     "MSE",
+                'dropout':      [0,0,0],
+                'batch_norm':   True
                 }        
     valTrain = {
-                'batch': 128,
-                'lr': 1e-7,
-                'lr_decay': (.8, 300),
-                'buffer': 3000,
-                'explore': .5, #sigma
-                'baseExplore': .05,
-                'step': 2000,
-                'smooth': .1,
-                'clip': .2,
+                'batch':        32,
+                'lr':           1e-4, #good on LR
+                'lr_decay':     (.2, 500),
+                'buffer':       2500,
+                'explore':      1.5, #sigma
+                'baseExplore':  .02,
+                'explore_decay':.99999, 
+                'smooth':       .02,
+                'clip':         .07,
                 'policy_delay': 2,
-                'manual': True,
-                'mean': torch.Tensor([0, 0, 0, 0]),
-                'variance': torch.Tensor([1.5, 1.5, 3, 3]),
-                'a': 1,
-                'l2': .01,
-                'gamma': GAMMA
+                'manual':       True,
+                'mean':         torch.Tensor([0, 0, 0, 0]),
+                'variance':     torch.Tensor([.5, .5, 1, 1]),
+                'a':            1,
+                'l2':           .01,
+                'gamma':        GAMMA
                 }
     actPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden': [256, 256, 256], 
-                'mean_range': 3,
-                'act': [nn.ELU(), nn.ELU(), nn.ELU()],
-                'preprocess': True, 
-                'prob': False,
-                'dropout': [.1, .1, .1], 
-                'loss_fnc': "",
+                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
+                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), 
+                'hidden':       [256, 256, 256], #used 128 most recently 
+                'mean_range':   3,
+                'act':          [nn.LeakyReLU(), nn.LeakyReLU(), nn.LeakyReLU()],
+                'preprocess':   True, 
+                'prob':         False,
+                'batch_norm':   False,
+                'dropout':      [.1, .1, .1], 
+                'loss_fnc':     "",
             }
     actTrain = { 
-                'lr': 1e-8,
-                'lr_decay':(.8, 300),
-                'l2': .01,
-                'gamma': GAMMA,
-                'manual': True,
-                'mean': torch.Tensor([0, 0]),
-                'variance': torch.Tensor([1.5, 1.5])
+                'lr':           1e-5,
+                'lr_decay':     (.2, 500),
+                'l2':           .01,
+                'gamma':        GAMMA,
+                'manual':       True,
+                'mean':         torch.Tensor([0, 0]),
+                'variance':     torch.Tensor([1, 1])
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
-    tanker = Twin_DDPG(params, NAME, GoalSetTask("d_policy"))
+    tanker = Twin_DDPG(params, NAME, MoveTask("d_policy"))
 
 if description == "A2C":
-    tau = .01
+
     agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot": {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
+                "bot":          {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
             })
 
     valPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': 1, #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': [256, 256, 256],
-                'dual': False,
-                'act': [nn.LeakyReLU(),nn.LeakyReLU(), nn.LeakyReLU()],
-                'preprocess': True, 
-                'prob': False,
-                'trainMode': True,
-                'loss_fnc': "MSE",
-                'dropout': [0, 0, 0]
+                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
+                'out_n':        1, 
+                'hidden':       [256, 256, 256],
+                'dual':         False,
+                'act':          [nn.LeakyReLU(),nn.LeakyReLU(), nn.LeakyReLU()],
+                'preprocess':   True, 
+                'batch_norm':   True,
+                'prob':         False,
+                'trainMode':    True,
+                'load':         False,
+                'loss_fnc':     "MSE",
+                'dropout':      [0, 0, 0]
                 }        
     valTrain = {
-                'batch': 8,
-                'lr': 1e-6,
-                'manual': True,
-                'explore': False,
-                'mean': torch.Tensor([0, 0]),
-                'variance': torch.Tensor([1.5, 1.5]),
-                'l2': .01,
-                'gamma': GAMMA
+                'batch':        4,
+                'lr':           1e-4,
+                'lr_decay':     (.2, 200),
+                'manual':       True,
+                'explore':      False,
+                'mean':         torch.Tensor([0, 0]),
+                'variance':     torch.Tensor([1.5, 1.5]),
+                'l2':           .01,
+                'gamma':        GAMMA
                 }
     actPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden': [256, 256, 256], 
-                'act': [nn.ELU(), nn.ELU(), nn.ELU()],
-                'mean_range': 3,
+                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
+                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), 
+                'hidden':       [256, 256, 256], 
+                'act':          [nn.ELU(), nn.ELU(), nn.ELU()],
+                'mean_range':   3,
+                'batch_norm':   False,
                 'logstd_range': math.log(2),
-                'preprocess': True, 
-                'prob': True,
-                'dropout': [0, 0, 0], 
-                'loss_fnc': "",
+                'preprocess':   True, 
+                'prob':         True,
+                'dropout':      [.1, .1, .1], 
+                'loss_fnc':     "",
             }
     actTrain = { 
-                'lr': 1e-7,
-                'l2': .02,
-                'gamma': GAMMA,
-                'manual': True,
-                'mean': torch.Tensor([0, 0]),
-                'variance': torch.Tensor([1.5, 1.5])
+                'lr':           1e-5,
+                'lr_decay':     (.2, 200),
+                'l2':           .02,
+                'gamma':        GAMMA,
+                'manual':       True,
+                'mean':         torch.Tensor([0, 0]),
+                'variance':     torch.Tensor([1.5, 1.5])
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
-    tanker = A2C(params, NAME, GoalSetTask("p_policy"))
+    tanker = A2C(params, NAME, MoveTask("p_policy"))
+
+if description == "SAC":
+    agents = OrderedDict({
+                #ensure ordering matches ros messages
+                "bot":          {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
+            })
+
+    valPars = {
+                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
+                'out_n':        1, 
+                'hidden':       [128, 128],
+                'act':          [nn.LeakyReLU(),nn.LeakyReLU(),nn.LeakyReLU()],
+                'preprocess':   True, 
+                'batch_norm':   True,
+                'prob':         False,
+                'trainMode':    True,
+                'load':         False,
+                'tau':          .005,
+                'loss_fnc':     "MSE",
+                'dropout':      [0, 0,0]
+                }        
+    valTrain = {
+                'grad_steps':   30,
+                'batch':        256, 
+                'lr':           3e-6, 
+                'manual':       True,
+                'buffer':       5000,
+                'nu':           .999, 
+                'explore':      False,
+                'mean':         torch.Tensor([0, 0]),
+                'variance':     torch.Tensor([3, 3]),
+                'l2':           0,
+                'gamma':        .9995
+                }
+    qPars = {
+                'in_n':         sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
+                'out_n':        1,
+                'hidden':       [256, 256],
+                'act':          [nn.ELU(), nn.ELU(), nn.ELU()],
+                'preprocess':   True,
+                'batch_norm':   True,
+                'prob':         False,
+                'trainMode':    True,
+                'loss_fnc':     "MSE",
+                'dropout':      [0,0,0]
+    }
+    qTrain = {
+                'lr':           1e-4, 
+                'lr_decay':     (500, 1),
+                'manual':       True,
+                'delay':        1,
+                'mean':         torch.Tensor([0, 0, 0, 0]),
+                'variance':     torch.Tensor([4, 4, 3, 3]),
+                'l2':           0
+    }
+    actPars = {
+                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
+                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), 
+                'hidden':       [256, 256],
+                'mean_width':   256,
+                'std_width':    256,
+                'act':          [nn.ELU(), nn.ELU()],
+                'mean_range':   3,
+                'batch_norm':   False,
+                'preprocess':   True, 
+                'prob':         True,
+                'dropout':      [0, 0, 0], 
+                'loss_fnc':      "",
+            }
+    actTrain = { 
+                'lr':           1e-4, 
+                'lr_decay':     (500, 1),
+                'l2':           0,
+                'manual':       True,
+                'clamp':        (-20,.5), 
+                'alpha':        .2, 
+                'mean':         torch.Tensor([0, 0]),
+                'variance':     torch.Tensor([3, 3])
+                }
+
+    params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, 'qPars': qPars, 'qTrain': qTrain, "agents": agents}
+    tanker = SAC(params, NAME, MoveTask("p_policy"))
 
 
 while(True):

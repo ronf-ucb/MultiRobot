@@ -14,6 +14,7 @@ class Task(object):
             self.policyNet = agent.policyNet
 
         self.agent = agent 
+        self.agents = agent.agents
         self.extractInfo()
         self.init = True  
 

@@ -24,17 +24,17 @@ class Agent(object):
         for key in self.agents.keys():
             bot = self.agents[key]
             self.pubs[key] = rospy.Publisher(bot['pub'], Vector3, queue_size = 1)
-        rospy.Subscriber(self.agents[self.name]['sub'], String, task.receiveState, queue_size = 1) 
 
-        self.batch_size = self.vTrain['batch']
-        self.discount = self.vTrain['gamma']
-        self.prob = self.vPars['prob']
-        self.trainMode = self.vPars['trainMode']
-        self.explore = self.vTrain['explore']
-        self.dataSize = 0 #number of data tuples we have accumulated so far
-        self.stop = False
-        self.trainIt = 0
-        self.totalSteps = 0
+        self.batch_size     = self.vTrain['batch']
+        self.discount       = self.vTrain['gamma']
+        self.prob           = self.vPars['prob']
+        self.trainMode      = self.vPars['trainMode']
+        self.explore        = self.vTrain['explore']
+        self.dataSize       = 0 #number of data tuples we have accumulated so far
+        self.stop           = False
+        self.trainIt        = 0
+        self.totalSteps     = 0
+        self.load           = self.vPars['load']
     
     def receiveDone(self, message):
         if message.data  == 1: #all iterations are done. Check manager.py

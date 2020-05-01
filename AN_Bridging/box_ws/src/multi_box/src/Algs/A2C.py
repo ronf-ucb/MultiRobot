@@ -17,7 +17,7 @@ from agent import Agent
 from utils import positiveWeightSampling
 from Replay import Replay
 
-'''Twin-delayed DDPG to curb Q value overestimation with clipped double Q-learning, Q value smoothing using noise and delayed policy updates for stability'''
+'''Advantage Actor Critic. On-policy.'''
 
 class A2C(Agent):
     def __init__(self, params, name, task):
@@ -53,7 +53,7 @@ class A2C(Agent):
         
     def train(self):
         if self.dataSize == self.batch_size:
-            self.totalSteps += 1
+            self.totalSteps += 1    
             s, a, r, n_s, n_a, mask = self.exp.get_data()
             mask = torch.FloatTensor(np.where(mask  > .5, 0, 1)) #if fail, equal to 1 so set mask to 0
 

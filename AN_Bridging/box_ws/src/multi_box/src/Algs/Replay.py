@@ -12,7 +12,7 @@ class Replay:
     def push(self, experience):
         self.memory.append(experience)
         self.curr += 1
-        if self.curr >= self.max:
+        if self.curr > self.max:
             del self.memory[0]
 
     def get_data(self, batch = -1):

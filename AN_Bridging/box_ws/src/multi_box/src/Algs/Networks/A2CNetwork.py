@@ -23,6 +23,8 @@ class A2CNetwork(Network):
         outputs = self.tan(outputs).view(-1, self.out_n)
         mean = self.mean_range*outputs[:, :int(self.out_n/2)]
         log_std = self.logstd_range * outputs[:, int(self.out_n/2):]
-        outputs = torch.cat((mean, log_std), dim = 1)
-        return outputs
+        normal = Normal(mean,torch.exp(log_std))
+        action = normal.sample()
+        log_prob = normal.log_prob(action + 1e-9)
+        return action, log_prob
 

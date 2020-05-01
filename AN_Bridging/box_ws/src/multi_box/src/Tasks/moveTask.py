@@ -13,24 +13,24 @@ from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
 from matplotlib import pyplot as plt
 
-class GoalSetTask(Task):
+class MoveTask(Task):
     def __init__(self, action):
-        super(GoalSetTask, self).__init__(action)
+        super(MoveTask, self).__init__(action)
 
         self.prev = {"S": None, "A": None}
         self.actionMap = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6:(0,0)}
         self.restart = rospy.Publisher('/restart', Int8, queue_size = 1)
         rospy.Subscriber('/restart', Int8, self.restartCall, queue_size = 1)
+   
 
         self.currReward = 0
         self.rewards = []
         self.currIt = 0
         self.prevIt = 0
         self.goal = 0
-        self.sigma = .3
-        self.c = 15
+        self.c = 30
+        self.success = 5
         self.distances = []
-
 
     def extractInfo(self):
         self.vTrain = self.agent.vTrain
@@ -39,6 +39,7 @@ class GoalSetTask(Task):
         self.trainMode = self.agent.trainMode
         self.explore = self.agent.explore
         self.name = self.agent.name
+        rospy.Subscriber(self.agents[self.name]['sub'], String, self.receiveState, queue_size = 1) 
  
     def sendAction(self, s):
         msg = Vector3()
@@ -53,19 +54,17 @@ class GoalSetTask(Task):
             msg.x, msg.y = self.actionMap[index]
             action = np.array([index])
         if self.a == "p_policy":
-            output = torch.flatten(self.policyNet(torch.FloatTensor(s)))
-            action_mean = output[:self.out_n]
-            action_logstd = output[self.out_n:]
-            action_std = torch.exp(action_logstd)
-            action = torch.normal(action_mean, action_std).detach().numpy()
+            action, _ = self.policyNet(torch.FloatTensor(s))
+            action = np.ravel(action.detach().numpy())
             msg.x, msg.y = (action[0], action[1])
         if self.a == "d_policy":
-            output = self.policyNet(torch.FloatTensor(s))
+            output = self.policyNet(torch.FloatTensor(s).view(-1, s.size))
             i = np.random.random()
             output = output.detach().numpy() 
-            noise = self.agent.noise.get_noise(t = 1)
-            output = np.clip(output + noise, -self.agent.mean_range, self.agent.mean_range)
-            print(noise, '    ', output)
+            if self.trainMode:
+                noise = self.agent.noise.get_noise(t = 1)
+                print(noise, '    ', output)
+                output = np.clip(output + noise, -self.agent.mean_range, self.agent.mean_range)
             rav = np.ravel(output)
             msg.x = rav[0]
             msg.y = rav[1]
@@ -77,14 +76,19 @@ class GoalSetTask(Task):
     def rewardFunction(self, s_n, a):
         currDist = dist(s_n,np.zeros(s_n.shape))
         self.distances.append(currDist)
-        if currDist < .25:
-            return 50
+        if currDist < .5:
+            return 1
+        reg = .1 * np.sum(3 - np.abs(a)) if self.a != "argmax" else 0
         prev = self.prev['S']
         prevOri = unitVector(prev)
         ori = unitVector(s_n)
         r_ori = abs(ori[0]) - abs(prevOri[0]) 
         deltDist = 10* (dist(prev, np.zeros(prev.shape)) - dist(s_n, np.zeros(s_n.shape)))
-        return deltDist + r_ori*2 - currDist/3
+        return (deltDist + r_ori - reg)/self.success # - currDist/6 + r_ori*2 
+
+    def receiveGoal(self, msg):
+        goal = np.array(vrep.simxUnpackFloats(msg.data))
+        self.goal = goal
 
     def receiveState(self, msg):
         s = np.array(vrep.simxUnpackFloats(msg.data))
@@ -93,23 +97,23 @@ class GoalSetTask(Task):
         self.prevIt = self.currIt 
         a = (self.sendAction(s))
 
-        if type(self.prev["S"]) == np.ndarray:
+        if type(self.prev["S"]) == np.ndarray: 
             r = np.array(self.rewardFunction(s, self.prev['A'])).reshape(1,-1)
-            if r == 50:
+            if r == 1:
                 finish = 1
                 print('#### SUCCESS!!!! ####')
+            #print(r)
             self.agent.store(self.prev['S'].reshape(1,-1), self.prev["A"], r, s.reshape(1,-1), None, finish)
             self.agent.dataSize += 1
             self.currReward += np.asscalar(r)
-            #print('Delta: ', s, '    reward:    ', r)
 
         self.prev["S"] = s
         self.prev["A"] = a.reshape(1,-1)
         s = s.ravel()
-        if self.trainMode and self.agent.dataSize >= self.agent.batch_size:
-            self.agent.train()
         self.currIt += 1
         if self.currIt > self.c or finish:
+            if self.trainMode and self.agent.dataSize >= self.agent.batch_size:
+                self.agent.train()
             msg = Int8()
             msg.data = 1
             self.restart.publish(msg)
@@ -131,7 +135,7 @@ class GoalSetTask(Task):
                 if self.a == 'p_policy' or self.a == 'd_policy':
                     self.agent.actorLoss.append((self.agent.avgActLoss)/self.agent.trainIt)  
                     self.agent.avgActLoss = 0 
-            self.rewards.append(self.currReward/(max(self.currIt, 1)))
+                self.rewards.append(self.currReward)
             self.currIt, self.goal, self.agent.trainIt, self.currReward = (0,0,0,0)
             self.prevIt = self.currIt
             self.distances = []
@@ -155,10 +159,10 @@ class GoalSetTask(Task):
     
     def plotRewards(self):
         x = range(len(self.rewards))
-        plt.plot(x, self.rewards)
-        plt.title("Average rewards over Episodes")
+        #plt.plot(x, self.rewards)
+        plt.title("Moving Average Rewards Over Episodes")
         plt.legend()
-        window= np.ones(int(5))/float(5)
+        window= np.ones(int(15))/float(15)
         lineRewards = np.convolve(self.rewards, window, 'same')
         plt.plot(x, lineRewards, 'r')
         grid = True
