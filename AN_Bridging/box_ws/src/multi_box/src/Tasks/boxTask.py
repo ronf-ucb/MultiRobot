@@ -80,9 +80,9 @@ class BoxTask(Task):
             block_r = blockPos[0] - prevBlock[0]
             rob_r = pos[0] - prevPos[0]
             dist_r = .5*(dist(prevPos, blockPos) - dist(pos, blockPos))
-            deltaOri = (np.abs(prevS[11]) - np.abs(blockOri)) + (np.abs(prevS[5]) - np.abs(ori))
+            #deltaOri = (np.abs(prevS[11]) - np.abs(blockOri)) + (np.abs(prevS[5]) - np.abs(ori))
 
-            return ((block_r + rob_r + dist_r + deltaOri) * self.w_phase1, 0)
+            return ((block_r + rob_r + dist_r) * self.w_phase1, 0)
 
         if self.phase == 3:
             if pos[0] > .75:

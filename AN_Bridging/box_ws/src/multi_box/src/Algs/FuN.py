@@ -44,8 +44,9 @@ class Feudal(object):
         self.horizon        = self.fun['c']
         self.k              = self.fun['k']
         self.state          = self.fun['s']
+        self.d              = self.fun['d']
 
-        self.net            = FeudalNetwork(self.actions, self.state, self.horizon, self.k).to(device)
+        self.net            = FeudalNetwork(self.actions, self.state, self.horizon, self.k, self.d).to(device)
 
         self.m_discount     = self.vTrain['m_gamma']
         self.w_discount     = self.vTrain['w_gamma']
@@ -78,11 +79,11 @@ class Feudal(object):
 
     def get_action(self, s):
         net_out = self.net(torch.FloatTensor(s), self.m_lstm, self.w_lstm, self.goals_horizon)
-        policy, goal, goals_horizon, self.m_lstm, self.w_lstm, m_value, w_value_ext, w_value_int, m_state = net_out
+        policy, goal, self.goals_horizon, self.m_lstm, self.w_lstm, m_value, w_value_ext, w_value_int, m_state = net_out
         self.temp = Temp(goal, policy, m_value, w_value_ext, w_value_int, m_state)
         choice = np.asscalar(self.choose(policy))
         action = self.actionMap[choice]
-        return np.array(action).ravel(), choice
+        return np.array(action).ravel(), choice #single env
 
     def choose(self, policies):
         m = Categorical(policies)
@@ -99,15 +100,15 @@ class Feudal(object):
                     self.temp.w_value_ext, self.temp.w_value_int, self.temp.m_state)
 
     def reset(self):
-        m_hx                = torch.zeros(1, self.actions * self.k).to(device)
-        m_cx                = torch.zeros(1, self.actions * self.k).to(device)
+        m_hx                = torch.zeros(1, self.d).to(device)
+        m_cx                = torch.zeros(1, self.d).to(device)
         self.m_lstm         = (m_hx, m_cx)
 
         w_hx                = torch.zeros(1, self.actions * self.k).to(device)
         w_cx                = torch.zeros(1, self.actions * self.k).to(device)
         self.w_lstm         = (w_hx, w_cx)
 
-        self.goals_horizon  = torch.zeros(1, self.horizon + 1, self.actions * self.k).to(device)
+        self.goals_horizon  = torch.zeros(1, self.horizon + 1, self.d).to(device)
         return 
 
     def get_grad_norm(self, model):
@@ -176,8 +177,7 @@ class Feudal(object):
                 log_policy = torch.log(policies[i] + 1e-5)
                 w_advantage = w_returns[i] + returns_int[i] - w_values_ext[i].squeeze(-1) - w_values_int[i].squeeze(-1)
                 log_policy = log_policy.gather(-1, actions[i].unsqueeze(-1).unsqueeze(-1))
-                #w_loss[i] = - (w_advantage) * log_policy.squeeze(-1)
-                w_loss[i] = - (w_advantage + self.alpha*log_policy.squeeze(-1)) * log_policy.squeeze(-1) #added entropy term
+                w_loss[i] = - (w_advantage) * log_policy.squeeze(-1)
             
             m_loss = m_loss.mean()
             w_loss = w_loss.mean()

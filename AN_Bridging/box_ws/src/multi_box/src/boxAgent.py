@@ -270,6 +270,7 @@ if description == 'FEUDAL':
                 'u':            7,
                 'c':            9,
                 'k':            16,
+                'd':            256,
             }
     params = {"agents": agents, 'train': train, 'fun': fun}
     agent = Feudal(params, NAME, BoxTask())

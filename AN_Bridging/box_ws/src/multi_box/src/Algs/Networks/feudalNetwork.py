@@ -10,10 +10,10 @@ import numpy as np
 
 
 class FeudalNetwork(nn.Module):
-    def __init__(self, num_actions, num_state, horizon, k):
+    def __init__(self, num_actions, num_state, horizon, k, d):
         super(FeudalNetwork, self).__init__()
-        self.manager = Manager(num_actions, num_state, k)
-        self.worker = Worker(num_actions, num_state, k)
+        self.manager = Manager(num_actions, num_state, k, d)
+        self.worker = Worker(num_actions, num_state, k, d)
         self.horizon = horizon
 
     def forward(self, x, m_lstm, w_lstm, goals_horizon):
@@ -30,19 +30,17 @@ class FeudalNetwork(nn.Module):
 ######################################################################################################
 
 class Manager(nn.Module):
-    def __init__(self, num_actions, num_state, k):
+    def __init__(self, num_actions, num_state, k, d):
         super(Manager, self).__init__()
-        self.fc = nn.Linear(num_state, num_actions * k)
+        self.fc = nn.Linear(num_state, d)
 
-        self.lstm = nn.LSTMCell(num_actions * k, hidden_size=num_actions * k)
+        self.lstm = nn.LSTMCell(d, hidden_size= d)
 
         self.lstm.bias_ih.data.fill_(0)
         self.lstm.bias_hh.data.fill_(0)
 
-        self.fc_critic1 = nn.Linear(num_actions * k, 50)
+        self.fc_critic1 = nn.Linear(d, 50)
         self.fc_critic2 = nn.Linear(50, 1)
-
-        self.fc_actor = nn.Linear(50, num_actions)
 
     def forward(self, inputs):
         x, (hx, cx) = inputs
@@ -66,7 +64,7 @@ class Manager(nn.Module):
 ######################################################################################################
     
 class Worker(nn.Module):
-    def __init__(self, num_actions, num_state, k):
+    def __init__(self, num_actions, num_state, k, d):
         self.num_actions = num_actions
         super(Worker, self).__init__()
         self.k = k
@@ -75,7 +73,7 @@ class Worker(nn.Module):
         self.lstm.bias_ih.data.fill_(0)
         self.lstm.bias_hh.data.fill_(0)
 
-        self.fc = nn.Linear(num_actions * k, k, bias=False)
+        self.fc = nn.Linear(d, k, bias=False)
 
         self.fc_critic1 = nn.Linear(num_actions * k, 50)
         self.fc_critic1_out = nn.Linear(50, 1)
@@ -104,6 +102,6 @@ class Worker(nn.Module):
         goal_embed = goal_embed.unsqueeze(-1)
 
         policy = torch.bmm(worker_embed, goal_embed)
-        policy = policy.squeeze(-1)
+        policy = policy.squeeze(-1)  #working with one env
         policy = F.softmax(policy, dim=-1)
         return policy, (hx, cx), value_ext, value_int
