@@ -54,7 +54,7 @@ class Manager():
         return
 
 episodes = 500
-maxTime =  500  
+maxTime =  40  
 
 
 if __name__ == "__main__":

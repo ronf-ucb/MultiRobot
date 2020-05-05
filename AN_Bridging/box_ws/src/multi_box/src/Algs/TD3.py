@@ -15,7 +15,6 @@ from Networks.TD3Network import TD3Network
 from agent import Agent
 from utils import positiveWeightSampling as priority
 from utils import OUNoise
-from Replay import Replay
 
 '''Twin-delayed DDPG to curb Q value overestimation with clipped double Q-learning, Q value smoothing using noise and delayed policy updates for stability'''
 
@@ -42,7 +41,7 @@ class Twin_DDPG(Agent):
             self.policyNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/TD3_goal_policy2.txt"))
 
         self.base       = self.vTrain['baseExplore']
-        self.step       = self.vTrain['explore_decay']
+        self.step       = self.vTrain['decay']
         self.expSize    = self.vTrain['buffer']
         self.exp        = Replay(self.expSize)
         self.a          = self.vTrain['a']
@@ -50,7 +49,6 @@ class Twin_DDPG(Agent):
         self.smooth     = self.vTrain['smooth']
         self.clip       = self.vTrain['clip']
         self.delay      = self.vTrain['policy_delay']
-        self.out_n      = self.aPars['out_n']
         self.mean_range = self.aPars['mean_range']
         self.noise      = OUNoise(self.out_n, mu = 0, theta = .15, max_sigma = self.explore, min_sigma = self.base, decay = self.step)
         self.valueLoss  = []
@@ -78,6 +76,19 @@ class Twin_DDPG(Agent):
         torch.save(self.values[1].state_dict(), path + "Qvalue2.txt")
         print("Network saved")
         pass
+
+    def get_action(self):
+        output = self.policyNet(torch.FloatTensor(s))
+        i = np.random.random()
+        if i < self.explore[0]:
+            #add in exploration 
+            noise = torch.from_numpy(np.random.normal(0, self.explore[1], 2))
+            output = output + noise
+        output = output.float()
+        msg.x = output[0][0]
+        msg.y = output[0][1]
+        self.pubs[self.name].publish(msg)
+        return output, output[0]
         
     def train(self):
         if self.dataSize > 500 and self.trainMode:

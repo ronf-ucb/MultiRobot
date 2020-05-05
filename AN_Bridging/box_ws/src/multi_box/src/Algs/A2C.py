@@ -15,7 +15,6 @@ from Networks.network import Network
 from Networks.A2CNetwork import A2CNetwork
 from agent import Agent
 from utils import positiveWeightSampling
-from Replay import Replay
 
 '''Advantage Actor Critic. On-policy.'''
 
@@ -26,15 +25,12 @@ class A2C(Agent):
             self.aPars = params['actPars']
             self.aTrain = params['actTrain']
             self.value = Network(self.vPars, self.vTrain)
-            #self.target = Network(self.vPars, self.vTrain)
-            #self.target.load_state_dict(self.value.state_dict())
             self.policyNet = A2CNetwork(self.aPars, self.aTrain)
         else:
             self.policyNet = Network(self.aPars, self.aTrain)
             self.policyNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/PolicyNet.txt"))
 
         self.exp = Replay(self.batch_size)
-        self.out_n = self.aPars['out_n']
         self.replaceCounter = 0
         self.valueLoss = []
         self.actorLoss = []
@@ -50,6 +46,14 @@ class A2C(Agent):
     def saveModel(self):
         #print("Network saved")
         pass
+
+    def get_action(self):
+        output = self.policyNet(torch.FloatTensor(s))
+        action_mean = output[:, :int(out_n/2)]
+        action_logstd = output[:, int(out_n/2):]
+        action_std = torch.exp(action_logstd)
+        action = (torch.normal(action_mean, action_std).detach().numpy()).ravel()
+        return action, action
         
     def train(self):
         if self.dataSize == self.batch_size:

@@ -22,20 +22,15 @@ class MoveTask(Task):
         self.restart = rospy.Publisher('/restart', Int8, queue_size = 1)
         rospy.Subscriber('/restart', Int8, self.restartCall, queue_size = 1)
    
-
-        self.currReward = 0
-        self.rewards = []
-        self.currIt = 0
-        self.prevIt = 0
-        self.goal = 0
+        self.currReward, self.currIt, self.prevIt, self.goal = (0, 0, 0, 0)
         self.c = 30
         self.success = 5
-        self.distances = []
+        self.rewards = []
 
     def extractInfo(self):
         self.vTrain = self.agent.vTrain
         self.pubs = self.agent.pubs
-        self.out_n = self.agent.out_n
+        self.actions = self.agent.actions
         self.trainMode = self.agent.trainMode
         self.explore = self.agent.explore
         self.name = self.agent.name
@@ -47,14 +42,14 @@ class MoveTask(Task):
             q = self.valueNet(s)
             i = np.random.random()
             if i < self.explore:
-                index = np.random.randint(self.out_n)
+                index = np.random.randint(self.actions)
             else:
                 q = q.detach().numpy()
                 index = np.argmax(q)
             msg.x, msg.y = self.actionMap[index]
             action = np.array([index])
         if self.a == "p_policy":
-            action, _ = self.policyNet(torch.FloatTensor(s))
+            action, _ , _, _, _= self.policyNet(torch.FloatTensor(s))
             action = np.ravel(action.detach().numpy())
             msg.x, msg.y = (action[0], action[1])
         if self.a == "d_policy":
@@ -73,18 +68,17 @@ class MoveTask(Task):
         self.pubs[self.name].publish(msg)
         return action.reshape(1,-1)
     
-    def rewardFunction(self, s_n, a):
+    def rewardFunction(self, s, a, s_n):
         currDist = dist(s_n,np.zeros(s_n.shape))
-        self.distances.append(currDist)
         if currDist < .5:
-            return 1
+            return (1, 1)
         reg = .1 * np.sum(3 - np.abs(a)) if self.a != "argmax" else 0
         prev = self.prev['S']
         prevOri = unitVector(prev)
         ori = unitVector(s_n)
         r_ori = abs(ori[0]) - abs(prevOri[0]) 
         deltDist = 10* (dist(prev, np.zeros(prev.shape)) - dist(s_n, np.zeros(s_n.shape)))
-        return (deltDist + r_ori - reg)/self.success # - currDist/6 + r_ori*2 
+        return ((deltDist + r_ori - reg)/self.success, 0)
 
     def receiveGoal(self, msg):
         goal = np.array(vrep.simxUnpackFloats(msg.data))
@@ -93,27 +87,27 @@ class MoveTask(Task):
     def receiveState(self, msg):
         s = np.array(vrep.simxUnpackFloats(msg.data))
         finish = 0  
-
         self.prevIt = self.currIt 
+
         a = (self.sendAction(s))
 
         if type(self.prev["S"]) == np.ndarray: 
-            r = np.array(self.rewardFunction(s, self.prev['A'])).reshape(1,-1)
-            if r == 1:
-                finish = 1
+            r, finish = self.rewardFunction(self.prev['S'], self.prev['A'], s)
+            r = np.array(r).reshape(1,-1)
+            if finish:
                 print('#### SUCCESS!!!! ####')
-            #print(r)
-            self.agent.store(self.prev['S'].reshape(1,-1), self.prev["A"], r, s.reshape(1,-1), None, finish)
-            self.agent.dataSize += 1
+            self.agent.store(self.prev['S'].reshape(1,-1), self.prev["A"], r, s.reshape(1,-1), a, finish)
             self.currReward += np.asscalar(r)
+
+        if self.trainMode and len(self.agent.exp) >= self.agent.batch_size:
+            self.agent.train()
 
         self.prev["S"] = s
         self.prev["A"] = a.reshape(1,-1)
         s = s.ravel()
         self.currIt += 1
+
         if self.currIt > self.c or finish:
-            if self.trainMode and self.agent.dataSize >= self.agent.batch_size:
-                self.agent.train()
             msg = Int8()
             msg.data = 1
             self.restart.publish(msg)
@@ -125,7 +119,7 @@ class MoveTask(Task):
     
     def restartProtocol(self, restart): 
         if restart == 1:
-            print('Results:     Cumulative Reward: ', self.currReward, '    Steps: ', self.agent.totalSteps, '      Closest: ', min(self.distances))
+            print('Results:     Cumulative Reward: ', self.currReward, '    Steps: ', self.agent.totalSteps)
             print("")
             for k in self.prev.keys():
                 self.prev[k] = None

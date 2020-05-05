@@ -14,7 +14,6 @@ from Networks.network import Network
 from agent import Agent
 from Networks.dualNetwork import DualNetwork
 from utils import positiveWeightSampling
-from Replay import Replay
 
 '''Double DQN with priority sampling based on TD error. Possible to have dual networks for advantage and value'''
 
@@ -22,6 +21,7 @@ class DoubleQ(Agent):
     def __init__(self, params, name, task):
         super(DoubleQ, self).__init__(params, name, task)
         self.dual = self.vPars['dual']
+        self.actionMap = {0: (-3,-2), 1:(-2,-3), 2:(-3,-3), 3:(2,3), 4:(3,3), 5:(3,2)}
         if self.trainMode:
             if self.dual:
                 self.tarNet = DualNetwork(self.vPars, self.vTrain)
@@ -34,7 +34,6 @@ class DoubleQ(Agent):
 
         self.base = self.vTrain['baseExplore']
         self.decay = self.vTrain['decay']
-        self.out_n = self.vPars['out_n']
         self.step = self.vTrain['step']
         self.expSize =self.vTrain['buffer']
         self.exp = Replay(self.expSize)
@@ -56,7 +55,22 @@ class DoubleQ(Agent):
         #torch.save(self.valueNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNet_box.txt")
         #print("Network saved")
         pass
-        
+    
+    def get_action(self):
+        q = self.valueNet(s)
+        i = np.random.random()
+        if i < self.explore:
+            index = np.random.randint(self.out_n)
+            #print('random')
+        else:
+            q = q.detach().numpy()
+            index = np.argmax(q)
+            #print('determ')
+        # print(self.actionMap[index])
+        msg.x, msg.y = self.actionMap[index]
+        action = np.array([index])  
+        return self.actionMap[index], index
+
     def train(self):
         self.totalSteps += 1
         states, actions, rewards, nextStates, dummy, dummy2 = self.exp.get_data()

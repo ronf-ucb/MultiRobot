@@ -15,7 +15,6 @@ from Algs.trpo import TRPOAgent
 from Algs.TD3 import Twin_DDPG
 from Tasks.boxDoubleTask import BoxDoubleTask
 
-
 GAMMA = .985
 NAME = 'bot'
 NAMETWO = 'bot2'

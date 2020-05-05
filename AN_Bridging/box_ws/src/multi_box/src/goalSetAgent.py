@@ -30,155 +30,111 @@ rospy.init_node('Dummy', anonymous = True)
 if description == "DOUBLE_Q":
     agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot":          {"n": 2, "u": 7 ,"sub": "/state", "pub": "/action"}
+                "bot":          {"sub": "/state", "pub": "/action"}
             })
     valPars = {
-                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S
-                'hidden':       [256, 256],
-                'dual':         False,
-                'act':          [nn.LeakyReLU(),nn.LeakyReLU(),nn.LeakyReLU()],
-                'preprocess':   True, 
-                'prob':         False,
+                'neurons':      (2, 256, 256, 7),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([0, 0]),
+                'std':          torch.Tensor([2, 2]),
                 'trainMode':    True,
-                'loss_fnc':     "MSE",
-                'dropout':      [0,0,0]
+                'load':         False, 
                 }             
     valTrain = {
-                'batch':        16,
-                'lr':           1e-6,
-                'buffer':       3000,
-                'explore':      .4, 
-                'baseExplore': .05,
-                'decay':        .8,
-                'step':         50,
-                'double':       True,
+                'batch':        128, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'explore':      False,
+                'gamma':        .99
+                'explore': .4, 
+                'baseExplore': .1,
+                'decay': .6,
+                'step': 50,
+                'double': True,
                 'prioritySample': True,
-                'manual':       False,
-                'a':            1,
-                'l2':           .1,
-                'gamma':        GAMMA
+                'a': 1
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "agents": agents}
     tanker = DoubleQ(params, NAME, MoveTask("argmax"))
 
 if description == "TWIN_DDPG":
-
-    agents = OrderedDict({
+   agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot":          {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
+                "bot": {"sub": "/state", "pub": "/action"} #joint action space
             })
 
     valPars = {
-                'in_n':         sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
-                'out_n':        1,
-                'hidden':       [256, 256, 256],#used 128 most recently 
-                'dual':         False,
-                'tau':          .005,
-                'act':          [nn.LeakyReLU(),nn.LeakyReLU(), nn.LeakyReLU()],
-                'preprocess':   True, 
-                'prob':         False,
+                'neurons':      (4, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([0, 0, 0, 0]),
+                'std':          torch.Tensor([2, 2, 3, 3]),
                 'trainMode':    True,
                 'load':         False,
-                'loss_fnc':     "MSE",
-                'dropout':      [0,0,0],
-                'batch_norm':   True
+                'tau':          .005
                 }        
     valTrain = {
-                'batch':        32,
-                'lr':           1e-4, #good on LR
-                'lr_decay':     (.2, 500),
-                'buffer':       2500,
-                'explore':      1.5, #sigma
-                'baseExplore':  .02,
-                'explore_decay':.99999, 
-                'smooth':       .02,
-                'clip':         .07,
-                'policy_delay': 2,
-                'manual':       True,
-                'mean':         torch.Tensor([0, 0, 0, 0]),
-                'variance':     torch.Tensor([.5, .5, 1, 1]),
-                'a':            1,
-                'l2':           .01,
-                'gamma':        GAMMA
+                'batch':        128, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'gamma':        .99
+                'explore': (1, .3), #probability and sigma
+                'baseExplore': .20,
+                'decay': .90,
+                'step': 200,
+                'prioritySample': True,
+                'a': 1,
                 }
     actPars = {
-                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden':       [256, 256, 256], #used 128 most recently 
-                'mean_range':   3,
-                'act':          [nn.LeakyReLU(), nn.LeakyReLU(), nn.LeakyReLU()],
-                'preprocess':   True, 
-                'prob':         False,
-                'batch_norm':   False,
-                'dropout':      [.1, .1, .1], 
-                'loss_fnc':     "",
+                'neurons':      (2, 256, 256, 2),
+                'act':          ['F.relu', 'F.relu'],
+                'mean_range':   2,
+                'mu':           torch.Tensor([0, 0]),
+                'std':          torch.Tensor([2, 2]),
             }
     actTrain = { 
-                'lr':           1e-5,
-                'lr_decay':     (.2, 500),
-                'l2':           .01,
-                'gamma':        GAMMA,
-                'manual':       True,
-                'mean':         torch.Tensor([0, 0]),
-                'variance':     torch.Tensor([1, 1])
+                'lr':           1e-4, 
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
     tanker = Twin_DDPG(params, NAME, MoveTask("d_policy"))
 
 if description == "A2C":
-
-    agents = OrderedDict({
+   agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot":          {"n": 2, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
+                "bot":   {"sub": "/state", "pub": "/action"} #joint action space
             })
 
     valPars = {
-                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n':        1, 
-                'hidden':       [256, 256, 256],
-                'dual':         False,
-                'act':          [nn.LeakyReLU(),nn.LeakyReLU(), nn.LeakyReLU()],
-                'preprocess':   True, 
-                'batch_norm':   True,
-                'prob':         False,
+                'neurons':      (2, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([0, 0]),
+                'std':          torch.Tensor([3, 3]),
                 'trainMode':    True,
                 'load':         False,
-                'loss_fnc':     "MSE",
-                'dropout':      [0, 0, 0]
+                'tau':          .005
                 }        
     valTrain = {
-                'batch':        4,
-                'lr':           1e-4,
-                'lr_decay':     (.2, 200),
-                'manual':       True,
+                'batch':        256, 
+                'lr':           3e-4, 
+                'buffer':       10000,
+                'nu':           .999, 
                 'explore':      False,
-                'mean':         torch.Tensor([0, 0]),
-                'variance':     torch.Tensor([1.5, 1.5]),
-                'l2':           .01,
-                'gamma':        GAMMA
+                'gamma':        .99
                 }
     actPars = {
-                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden':       [256, 256, 256], 
-                'act':          [nn.ELU(), nn.ELU(), nn.ELU()],
+                'neurons':      (2, 256, 256, 2),
+                'act':          ['F.relu', 'F.relu'],
                 'mean_range':   3,
-                'batch_norm':   False,
-                'logstd_range': math.log(2),
-                'preprocess':   True, 
-                'prob':         True,
-                'dropout':      [.1, .1, .1], 
-                'loss_fnc':     "",
+                'mu':           torch.Tensor([0, 0]),
+                'std':          torch.Tensor([3, 3])
             }
     actTrain = { 
-                'lr':           1e-5,
-                'lr_decay':     (.2, 200),
-                'l2':           .02,
-                'gamma':        GAMMA,
-                'manual':       True,
-                'mean':         torch.Tensor([0, 0]),
-                'variance':     torch.Tensor([1.5, 1.5])
+                'lr':           1e-4, 
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
     tanker = A2C(params, NAME, MoveTask("p_policy"))
@@ -190,76 +146,42 @@ if description == "SAC":
             })
 
     valPars = {
-                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n':        1, 
-                'hidden':       [128, 128],
-                'act':          [nn.LeakyReLU(),nn.LeakyReLU(),nn.LeakyReLU()],
-                'preprocess':   True, 
-                'batch_norm':   True,
-                'prob':         False,
+                'neurons':      (2, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([0, 0]),
+                'std':          torch.Tensor([3, 3]),
                 'trainMode':    True,
                 'load':         False,
-                'tau':          .005,
-                'loss_fnc':     "MSE",
-                'dropout':      [0, 0,0]
+                'tau':          .005
                 }        
     valTrain = {
-                'grad_steps':   30,
                 'batch':        256, 
-                'lr':           3e-6, 
-                'manual':       True,
-                'buffer':       5000,
+                'lr':           3e-4, 
+                'buffer':       10000,
                 'nu':           .999, 
                 'explore':      False,
-                'mean':         torch.Tensor([0, 0]),
-                'variance':     torch.Tensor([3, 3]),
-                'l2':           0,
-                'gamma':        .9995
+                'gamma':        .99
                 }
     qPars = {
-                'in_n':         sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
-                'out_n':        1,
-                'hidden':       [256, 256],
-                'act':          [nn.ELU(), nn.ELU(), nn.ELU()],
-                'preprocess':   True,
-                'batch_norm':   True,
-                'prob':         False,
-                'trainMode':    True,
-                'loss_fnc':     "MSE",
-                'dropout':      [0,0,0]
+                'neurons':      (4, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([0, 0, 0, 0]),
+                'std':          torch.Tensor([4, 4, 3, 3]),
     }
     qTrain = {
                 'lr':           1e-4, 
-                'lr_decay':     (500, 1),
-                'manual':       True,
-                'delay':        1,
-                'mean':         torch.Tensor([0, 0, 0, 0]),
-                'variance':     torch.Tensor([4, 4, 3, 3]),
-                'l2':           0
     }
     actPars = {
-                'in_n':         sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n':        sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden':       [256, 256],
-                'mean_width':   256,
-                'std_width':    256,
-                'act':          [nn.ELU(), nn.ELU()],
+                'neurons':      (2, 256, 256, 2),
+                'act':          ['F.relu', 'F.relu'],
                 'mean_range':   3,
-                'batch_norm':   False,
-                'preprocess':   True, 
-                'prob':         True,
-                'dropout':      [0, 0, 0], 
-                'loss_fnc':      "",
+                'mu':           torch.Tensor([0, 0]),
+                'std':          torch.Tensor([3, 3])
             }
     actTrain = { 
                 'lr':           1e-4, 
-                'lr_decay':     (500, 1),
-                'l2':           0,
-                'manual':       True,
                 'clamp':        (-20,.5), 
                 'alpha':        .2, 
-                'mean':         torch.Tensor([0, 0]),
-                'variance':     torch.Tensor([3, 3])
                 }
 
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, 'qPars': qPars, 'qTrain': qTrain, "agents": agents}

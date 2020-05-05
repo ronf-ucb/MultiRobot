@@ -2,17 +2,10 @@
 
 import numpy as np
 class Task(object):
-    def __init__(self, action):
-        assert action == "argmax" or action == "p_policy" or action == "d_policy"
-        self.a = action
+    def __init__(self):
         self.init = False
         
     def initAgent(self, agent):
-        if self.a == "argmax":
-            self.valueNet = agent.valueNet
-        if self.a == "p_policy" or self.a == "d_policy":
-            self.policyNet = agent.policyNet
-
         self.agent = agent 
         self.agents = agent.agents
         self.extractInfo()
@@ -35,6 +28,9 @@ class Task(object):
 
     def postTraining(self):
         pass
+
+def vector(ori):
+    return np.array([np.cos(ori), np.sin(ori)])
 
 def distance(point1, point2):
     assert point1.size == point2.size

@@ -27,14 +27,11 @@ class Agent(object):
 
         self.batch_size     = self.vTrain['batch']
         self.discount       = self.vTrain['gamma']
-        self.prob           = self.vPars['prob']
         self.trainMode      = self.vPars['trainMode']
         self.explore        = self.vTrain['explore']
-        self.dataSize       = 0 #number of data tuples we have accumulated so far
-        self.stop           = False
-        self.trainIt        = 0
-        self.totalSteps     = 0
         self.load           = self.vPars['load']
+        self.stop           = False
+        self.totalSteps     = 0
     
     def receiveDone(self, message):
         if message.data  == 1: #all iterations are done. Check manager.py
@@ -43,12 +40,15 @@ class Agent(object):
             self.task.restartProtocol(restart = 1)
 
     def store(self, s, a, r, sprime, aprime = None, restart = 0):
-        self.exp.push((s, a, r, sprime, aprime, restart))
+        self.exp.add(s, a, r, sprime, aprime, restart)
     
     def train(self):
         pass 
     
     def saveModel(self):
+        pass
+    
+    def reset(self):
         pass
 
 

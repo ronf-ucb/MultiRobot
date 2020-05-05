@@ -14,56 +14,56 @@ from Algs.QSARSA import CentralQSarsa
 from Algs.doubleQ import DoubleQ
 from Algs.trpo import TRPOAgent
 from Algs.TD3 import Twin_DDPG
+from Algs.SoftActorCritic import SAC
+from Algs.FuN import Feudal
 from Tasks.boxTask import BoxTask
 
-
-GAMMA = .985
 NAME = 'bot'
 
 algs = {
     3: "CENTRAL_Q", #REMINDER: if choosing 3, make sure to only run the tankAgent.py in the launch file
     4: "CENTRAL_Q_SARSA", #REMINDER: same as above
     5: "CENTRAL_TRPO",
-    6: "CENTRAL_DDPG"
+    6: "CENTRAL_DDPG",
+    7: 'SAC',
+    8: 'FEUDAL'
 }
-ALGORITHM = 6
+ALGORITHM = 8
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
 if description == "CENTRAL_Q":
     agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot": {"n": 12, "u": 6 ,"sub": "/state", "pub": "/action"} #joint action space
+                "bot": {"sub": "/state", "pub": "/action"} #joint action space
             })
 
     valPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': [256,256,256],
-                'dual': False,
-                'act': [ nn.ReLU(), nn.ReLU(), nn.ReLU()],
-                'preprocess': True, 
-                'prob': False,
-                'trainMode': True,
-                'loss_fnc': "MSE",
-                'dropout': [.10,.10,.10] 
+                'neurons':      (13, 256, 256, 6),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
+                'trainMode':    True,
+                'load':         False, 
                 }             
     valTrain = {
-                'batch': 16,
-                'lr': 1e-5,
-                'w_phase1': 100,
-                'w_phase2': 100,
-                'w_phase3': 100,
-                'buffer': 3000,
+                'batch':        128, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'explore':      False,
+                'gamma':        .99,
                 'explore': .4, 
                 'baseExplore': .1,
                 'decay': .6,
                 'step': 50,
                 'double': True,
                 'prioritySample': True,
-                'a': 1,
-                'l2': .1,
-                'gamma': GAMMA
+                'a': 1
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "agents": agents}
     tanker = CentralQ(params, NAME, BoxTask("argmax"))
@@ -71,37 +71,33 @@ if description == "CENTRAL_Q":
 if description == "CENTRAL_Q_SARSA":
 
     agents = {
-                "bot": {"n": 12, "u": 6 ,"sub": "/state", "pub": "/action"}
+                "bot": {"sub": "/state", "pub": "/action"}
             }
     valPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': [256,256,256],
-                'dual': False,
-                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU()],
-                'preprocess': True, #makes no sense really
-                'prob': False,
-                'trainMode': True,
-                'loss_fnc': "MSE",
-                'dropout': [.10 ,.10 ,.10 ]
+                'neurons':      (13, 256, 256, 6),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
+                'trainMode':    True,
+                'load':         False,
                 }             
     valTrain = {
-                'batch': 1,
-                'lr': 1e-4,
-                'w_phase1': 100,
-                'w_phase2': 100,
-                'w_phase3': 100,
-                'buffer': 1,
-                'explore': .3, 
-                'double' :False,
-                'prioritySample': False,
-                'a': 0,
+
+                'batch':        1, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       1,
+                'explore':      .3,
+                'gamma':        .99,
                 'baseExplore': .1,
                 'decay': .75,
                 'step': 75,
-                'l2': .02,
                 'QWeight': 0,
-                'gamma': GAMMA
+                'gamma': .99
                 }
     params = { "valPars": valPars, "valTrain": valTrain, "agents": agents}
     tanker = CentralQSarsa(params, NAME, BoxTask("argmax"))
@@ -109,48 +105,35 @@ if description == "CENTRAL_Q_SARSA":
 if description == "CENTRAL_TRPO":
     agents = {
                 #ensure order matches ros messages
-                "bot": {"n": 12, "u": 2 ,"sub": "/state", "pub": "/action"}
+                "bot": {"sub": "/state", "pub": "/action"}
             }
     actPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden': [256,256,256], 
-                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU()],
-                'preprocess': True, 
-                'prob': True,
-                'double' :False,
-                'prioritySample': False,
-               'dual': False,
-                'a': 0,
-                'dropout': [.1,.1,.1], 
-                'loss_fnc': "",
+
+                'neurons':      (13, 256, 256, 2),
+                'act':          ['F.relu', 'F.relu'],
+                'mean_range':   2,
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
             }
     valPars = {
-                'in_n': actPars['in_n'], 
-                'out_n': 1, 
-                'hidden': [200,200,200], 
-                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU()], 
-                'preprocess': False, 
-                'prob': False, 
-                'trainMode': True,
-                'double' :False,
-                'prioritySample': False,
-                'dual': False,
-                'a': 0,
-                'dropout': [.10,.10,.10],
-                'loss_fnc': ""
+                'neurons':      (13, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
+                'trainMode':    True,
+                'load':         False,
                 }
     actTrain = { 
-                'explore': 1, 
                 'lr': 1e-5,
-                'l2': .02,
-                'gamma': GAMMA
                 }
 
     valTrain = {
                 'batch': 64,
                 'lr': 1e-5, 
-                'l2': .02,
                 'w_phase1': 30,
                 'w_phase2': 30,
                 'w_phase3': 30,
@@ -161,58 +144,136 @@ if description == "CENTRAL_TRPO":
     tanker = TRPOAgent(params, NAME, BoxTask("p_policy"))
 
 if description == "CENTRAL_DDPG":
-    tau = .01
     agents = OrderedDict({
                 #ensure ordering matches ros messages
-                "bot": {"n": 12, "u": 2 ,"sub": "/state", "pub": "/action"} #joint action space
+                "bot": {"sub": "/state", "pub": "/action"} #joint action space
             })
 
     valPars = {
-                'in_n': sum([agents[key]["n"] + agents[key]["u"] for key in agents.keys()]),
-                'out_n': 1, #F, FR, FL, B, BL, BR, S for both. Else: Unlatch, hook to the front from front, hook to back from back
-                'hidden': [256,256,256,256],
-                'dual': False,
-                'tau': tau,
-                'act': [nn.ReLU(),nn.ReLU(),nn.ReLU(), nn.ReLU()],
-                'preprocess': True, 
-                'prob': False,
-                'trainMode': True,
-                'loss_fnc': "MSE",
-                'dropout': [.10 , .10, .10, .10]
+                'neurons':      (15, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
+                'trainMode':    True,
+                'load':         False,
+                'tau':          .005
                 }        
     valTrain = {
-                'batch': 64,
-                'lr': 1e-3,
-                'w_phase1': 125,
-                'w_phase2': 100,
-                'w_phase3': 50,
-                'buffer': 3000,
+                'batch':        128, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'gamma':        .99,
                 'explore': (1, .3), #probability and sigma
                 'baseExplore': .20,
                 'decay': .90,
                 'step': 200,
                 'prioritySample': True,
                 'a': 1,
-                'l2': .01,
-                'gamma': GAMMA
                 }
     actPars = {
-                'in_n': sum([agents[key]["n"] for key in agents.keys()]),
-                'out_n': sum([agents[key]["u"] for key in agents.keys()]), 
-                'hidden': [256, 256, 256, 256], 
-                'act': [ nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.ReLU()],
-                'preprocess': True, 
-                'prob': False,
-                'dropout': [.1,.1,.1, .1], 
-                'loss_fnc': "",
+                'neurons':      (13, 256, 256, 2),
+                'act':          ['F.relu', 'F.relu'],
+                'mean_range':   2,
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
             }
     actTrain = { 
-                'lr': 1e-6,
-                'l2': .02,
-                'gamma': GAMMA
+                'lr':           1e-4, 
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
     tanker = Twin_DDPG(params, NAME, BoxTask("d_policy"))
+
+if description == 'SAC':
+    agents = OrderedDict({
+                #ensure ordering matches ros messages
+                "bot":          {"sub": "/state", "pub": "/action"} #joint action space
+            })
+
+    valPars = {
+                'neurons':      (13, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
+                'trainMode':    True,
+                'load':         False,
+                'tau':          .005
+                }        
+    valTrain = {
+                'batch':        128, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'explore':      False,
+                'gamma':        .99
+                }
+    qPars = {
+                'neurons':      (15, 256, 256, 1),
+                'act':          ['F.relu','F.relu'],
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0,
+                                              3, 3]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1,
+                                              3, 3]),
+    }
+    qTrain = {
+                'lr':           1e-4, 
+    }
+    actPars = {
+                'neurons':      (13, 256, 256, 2),
+                'act':          ['F.relu', 'F.relu'],
+                'mean_range':   2,
+                'mu':           torch.Tensor([-.875, 0, .5, 0, 0, 0, 
+                                              -.875, 0, .25,0, 0, 0, 0]),
+                'std':          torch.Tensor([1.625, 1.25, .25, np.pi, np.pi, np.pi,
+                                              1, 1, .25, np.pi, np.pi, np.pi, 1]),
+            }
+    actTrain = { 
+                'lr':           1e-4, 
+                'clamp':        (-20,.5), 
+                'alpha':        .2, 
+                }
+
+    params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, 'qPars': qPars, 'qTrain': qTrain, "agents": agents}
+    tanker = SAC(params, NAME, BoxTask("p_policy"))
+
+if description == 'FEUDAL':
+    agents = OrderedDict({
+                #ensure ordering matches ros messages
+                "bot": {"sub": "/state", "pub": "/action"} #joint action space
+            })
+    train = {
+                'm_gamma':      .99,
+                'w_gamma':      .8,
+                'lr':           3e-4,
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'trainMode':    True,
+                'clip_grad':    1,
+                'step':         40,
+                'alpha':        .1,
+            }
+    fun   = {
+                's':            13,
+                'u':            7,
+                'c':            9,
+                'k':            16,
+            }
+    params = {"agents": agents, 'train': train, 'fun': fun}
+    agent = Feudal(params, NAME, BoxTask())
+
 
 while(True):
     x = 1+1
