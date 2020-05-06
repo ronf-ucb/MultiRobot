@@ -39,8 +39,8 @@ class Manager(nn.Module):
         self.lstm.bias_ih.data.fill_(0)
         self.lstm.bias_hh.data.fill_(0)
 
-        self.fc_critic1 = nn.Linear(d, 50)
-        self.fc_critic2 = nn.Linear(50, 1)
+        self.fc_critic1 = nn.Linear(d, 256)
+        self.fc_critic2 = nn.Linear(256, 1)
 
     def forward(self, inputs):
         x, (hx, cx) = inputs
@@ -69,17 +69,19 @@ class Worker(nn.Module):
         super(Worker, self).__init__()
         self.k = k
 
-        self.lstm = nn.LSTMCell(num_state, hidden_size=num_actions * k)
+        self.percep = nn.Linear(num_state, d)
+
+        self.lstm = nn.LSTMCell(d, hidden_size=num_actions * k)
         self.lstm.bias_ih.data.fill_(0)
         self.lstm.bias_hh.data.fill_(0)
 
         self.fc = nn.Linear(d, k, bias=False)
 
-        self.fc_critic1 = nn.Linear(num_actions * k, 50)
-        self.fc_critic1_out = nn.Linear(50, 1)
+        self.fc_critic1 = nn.Linear(num_actions * k, num_actions * k)
+        self.fc_critic1_out = nn.Linear(num_actions * k, 1)
         
-        self.fc_critic2 = nn.Linear(num_actions * k, 50)
-        self.fc_critic2_out = nn.Linear(50, 1)
+        self.fc_critic2 = nn.Linear(num_actions * k, num_actions * k)
+        self.fc_critic2_out = nn.Linear(num_actions * k, 1)
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -87,12 +89,13 @@ class Worker(nn.Module):
 
     def forward(self, inputs):
         x, (hx, cx), goals = inputs
+        x = self.percep(x)
         hx, cx = self.lstm(x, (hx, cx))
 
-        value_ext = F.relu(self.fc_critic1(hx))
+        value_ext = F.relu(self.fc_critic1(hx)) #added detach here
         value_ext = self.fc_critic1_out(value_ext)
         
-        value_int = F.relu(self.fc_critic2(hx))
+        value_int = F.relu(self.fc_critic2(hx)) #added detach here
         value_int = self.fc_critic2_out(value_int)
 
         worker_embed = hx.view(hx.size(0), self.num_actions, self.k)

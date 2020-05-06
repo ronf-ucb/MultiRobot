@@ -32,7 +32,7 @@ class Feudal(object):
         self.agents         = params['agents']
         self.fun            = params['fun']
 
-        self.actionMap      = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6:(0,0)}
+        self.actionMap      = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6:(0,0), 7: (-2, 2), 8: (2, -2)}
 
         self.pubs = {}
         for key in self.agents.keys():
@@ -45,6 +45,7 @@ class Feudal(object):
         self.k              = self.fun['k']
         self.state          = self.fun['s']
         self.d              = self.fun['d']
+        self.valueLoss      = []
 
         self.net            = FeudalNetwork(self.actions, self.state, self.horizon, self.k, self.d).to(device)
 
@@ -189,7 +190,6 @@ class Feudal(object):
 
             self.optimizer.zero_grad()
             loss.backward(retain_graph=True)
-            grad_norm = self.get_grad_norm(self.net)
             torch.nn.utils.clip_grad_norm_(self.net.parameters(), self.clip_grad_norm)
             self.optimizer.step()
 
@@ -201,7 +201,11 @@ class Feudal(object):
             self.exp = Memory()
             self.totalSteps += 1
 
-            return loss, grad_norm
+            self.valueLoss.append(loss)
+            print('Loss: ', loss)
+            print('')
+
+            return loss
 
 
     

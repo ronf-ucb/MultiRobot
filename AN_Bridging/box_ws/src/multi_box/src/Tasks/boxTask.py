@@ -115,7 +115,7 @@ class BoxTask(Task):
             self.currReward += r
 
         if self.trainMode:
-            self.agent.train()
+            loss = self.agent.train()
 
         self.prev["S"] = s
         self.prev["A"] = a
@@ -139,13 +139,19 @@ class BoxTask(Task):
     ######### POST TRAINING #########
     def postTraining(self):
         #valueOnly = True if self.a == "argmax" else False
-        #self.plotLoss(valueOnly, "Value Loss over Iterations", "Actor Loss over Iterations")
         self.plotRewards()
+        self.plotLoss(True, 'Loss Over Iterations w/ Moving Average', "Actor Loss over Iterations w/ Moving Average")
         #self.agent.saveModel()
     
     def plotLoss(self, valueOnly = False, title1 = "Critic Loss over Iterations", title2 = "Actor Loss over Iterations"):
-        plt.plot(range(len(self.agent.valueLoss)), self.agent.valueLoss)
+        x = range(len(self.agent.valueLoss))
+        plt.plot(x, self.agent.valueLoss)
         plt.title(title1)
+        plt.legend()
+        window= np.ones(int(15))/float(15)
+        line = np.convolve(self.agent.valueLoss, window, 'same')
+        plt.plot(x, line, 'r')
+        grid = True
         plt.show()
         if not valueOnly:
             plt.plot(range(len(self.agent.actorLoss)), self.agent.actorLoss)
@@ -155,7 +161,7 @@ class BoxTask(Task):
     def plotRewards(self):
         x = range(len(self.rewards))
         plt.plot(x, self.rewards)
-        plt.title("Moving Average Rewards Over Episodes")
+        plt.title("Rewards Over Episodes w/ Moving Average")
         plt.legend()
         window= np.ones(int(15))/float(15)
         lineRewards = np.convolve(self.rewards, window, 'same')

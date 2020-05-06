@@ -261,13 +261,13 @@ if description == 'FEUDAL':
                 'w_phase2':     1, 
                 'w_phase3':     1,
                 'trainMode':    True,
-                'clip_grad':    1,
+                'clip_grad':    5,
                 'step':         40,
                 'alpha':        .1,
             }
     fun   = {
                 's':            13,
-                'u':            7,
+                'u':            9,
                 'c':            9,
                 'k':            16,
                 'd':            256,
