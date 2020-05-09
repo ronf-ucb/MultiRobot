@@ -12,7 +12,7 @@ import numpy as np
 class FeudalNetwork(nn.Module):
     def __init__(self, num_actions, num_state, horizon, k, d):
         super(FeudalNetwork, self).__init__()
-        self.manager = Manager(num_actions, num_state, k, d)
+        self.manager = Manager(num_actions, num_state, d)
         self.worker = Worker(num_actions, num_state, k, d)
         self.horizon = horizon
 
@@ -30,7 +30,7 @@ class FeudalNetwork(nn.Module):
 ######################################################################################################
 
 class Manager(nn.Module):
-    def __init__(self, num_actions, num_state, k, d):
+    def __init__(self, num_actions, num_state, d):
         super(Manager, self).__init__()
         self.fc = nn.Linear(num_state, d)
 

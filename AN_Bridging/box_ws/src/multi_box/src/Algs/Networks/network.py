@@ -15,7 +15,7 @@ class Network(nn.Module):
         self.n_layers = len(self.neurons) - 2
         self.act = netParams['act']
         self.lr = trainParams['lr']
-        self.div = netParams['std']
+        self.std = netParams['std']
         self.mean = netParams['mu']
 
         self.createFeatures()
@@ -23,7 +23,7 @@ class Network(nn.Module):
         self.optimizer =  optim.Adam(super(Network, self).parameters(), lr=self.lr)
 
     def preprocess(self, inputs):
-        return (inputs - self.mean) / self.div
+        return (inputs - self.mean) / self.std
 
     
     def createFeatures(self):

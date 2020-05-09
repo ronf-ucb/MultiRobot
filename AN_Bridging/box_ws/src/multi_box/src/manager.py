@@ -53,7 +53,7 @@ class Manager():
             self.restart = True 
         return
 
-episodes = 150
+episodes = 100
 maxTime =  40  
 
 

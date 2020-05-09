@@ -32,7 +32,7 @@ class Feudal(object):
         self.agents         = params['agents']
         self.fun            = params['fun']
 
-        self.actionMap      = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6:(0,0), 7: (-2, 2), 8: (2, -2)}
+        self.actionMap      = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)}
 
         self.pubs = {}
         for key in self.agents.keys():
@@ -96,8 +96,7 @@ class Feudal(object):
         pass
 
     def store(self, s, a, r, sprime, aprime, done):
-        self.exp.push(s, sprime,
-                    a, r, 1 - done, self.temp.goal, self.temp.policy, self.temp.m_value, 
+        self.exp.push(a, r, 1 - done, self.temp.goal, self.temp.policy, self.temp.m_value, 
                     self.temp.w_value_ext, self.temp.w_value_int, self.temp.m_state)
 
     def reset(self):

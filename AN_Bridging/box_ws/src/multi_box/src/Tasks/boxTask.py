@@ -17,7 +17,6 @@ class BoxTask(Task):
 
         self.prev = {"S": None, "A": None}
         self.s_n = 12
-
         self.currReward = 0
         self.rewards = []
         self.phase = 1
@@ -40,25 +39,22 @@ class BoxTask(Task):
         self.pubs[self.name].publish(msg)
         return ret
 
-    def rewardFunction(self, s, a):
-        s = s.ravel()
-        prevS = self.prev["S"].ravel()
-        prevPos = np.array(prevS[:3])
-        pos = np.array(s[:3])
-        blockPos = np.array(s[6:9])
-        prevBlock = np.array(prevS[6:9])
-        ori = s[5]
-        prevOri = prevS[5]
-        blockOri = s[11]
+    def checkPhase(self, pos, blockPos, ori, blockOri, phase):
         if pos[-1] < .35:
             return (-3, 1)
-        #reg = 0#.01 * np.sum(2 - np.abs(a)) if self.a != "argmax" else 0
-
-        if self.phase == 1:
+        if phase == 1:
             if abs(pos[0] - blockPos[0]) < .7 and abs(pos[1] - blockPos[1]) < .5 and abs(ori - blockOri) < .3:
-                print("### Phase ", self.phase, " completed")
-                self.phase += 1
                 return (5, 0)
+        if phase == 2:
+            if blockPos[2] < .3:
+                return (5, 0)
+        if phase == 3:
+            if pos[0] > .75:
+                return (5, 1)
+        return (0,0)
+    
+    def getAux(self, pos, prevPos, blockPos, prevBlock, ori, prevOri, phase):
+        if phase == 1:
             dist_r = (dist(prevPos, blockPos) - dist(pos, blockPos))
     
             prevVec = unitVector(vector(prevOri))
@@ -72,27 +68,40 @@ class BoxTask(Task):
             return ((dist_r+ 2*ori_r) * self.w_phase1, 0)
 
 
-        if self.phase == 2:
-            if blockPos[2] < .3:
-                print("### Phase ", self.phase, " completed")
-                self.phase+=1
-                return (5, 0)
+        if phase == 2:
             block_r = blockPos[0] - prevBlock[0]
             rob_r = pos[0] - prevPos[0]
             dist_r = .5*(dist(prevPos, blockPos) - dist(pos, blockPos))
-            #deltaOri = (np.abs(prevS[11]) - np.abs(blockOri)) + (np.abs(prevS[5]) - np.abs(ori))
-
+            
             return ((block_r + rob_r + dist_r) * self.w_phase1, 0)
 
-        if self.phase == 3:
-            if pos[0] > .75:
-                print("### Success!")
-                return (5, 1)
+        if phase == 3:
             goal = np.array([.80, blockPos[1], pos[2]])
             delta = dist(pos, goal)
             prevDelta = dist(prevPos, goal)
             y_r = -abs(blockPos[1]-pos[1])
+
             return ((prevDelta - delta + .15*y_r - .05 * abs(ori)) * self.w_phase3, 0)
+
+    def unpack(self, prevS, s):
+        prevPos = np.array(prevS[:3])
+        pos = np.array(s[:3])
+        blockPos = np.array(s[6:9])
+        prevBlock = np.array(prevS[6:9])
+        ori = s[5]
+        prevOri = prevS[5]
+        blockOri = s[11]
+        return prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri
+
+    def rewardFunction(self, s, a):
+        s = s.ravel()
+        prevS = self.prev["S"].ravel()
+        prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(prevS, s)
+        res = self.checkPhase(pos, blockPos, ori, blockOri, self.phase)
+        if res[0] != 0:
+            return res
+        return self.getAux(pos, prevPos, blockPos, prevBlock, ori, prevOri, self.phase)
+
     
     def receiveState(self, msg):
         floats = vrep.simxUnpackFloats(msg.data)
@@ -111,6 +120,9 @@ class BoxTask(Task):
 
         if type(self.prev["S"]) == np.ndarray:
             r, restart = self.rewardFunction(s,a)
+            if r == 5:
+                print(" #### Phase ", self.phase, "  Complete!")
+                self.phase += 1
             self.agent.store(self.prev['S'], self.prev["A"], np.array([r]).reshape(1, -1), s, a, restart)
             self.currReward += r
 
