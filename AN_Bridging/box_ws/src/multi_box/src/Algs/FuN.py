@@ -32,8 +32,6 @@ class Feudal(object):
         self.agents         = params['agents']
         self.fun            = params['fun']
 
-        self.actionMap      = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)}
-
         self.pubs = {}
         for key in self.agents.keys():
             bot             = self.agents[key]
@@ -46,6 +44,15 @@ class Feudal(object):
         self.state          = self.fun['s']
         self.d              = self.fun['d']
         self.valueLoss      = []
+
+        #TEMPORARY:
+        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
+        #options             = len(self.tempMap)
+        #self.actionMap      = {}
+        #for i in range(self.actions):
+        #    first = i // options
+        #    second = i % options
+        #    self.actionMap[i] = (self.tempMap[first], self.tempMap[second])
 
         self.net            = FeudalNetwork(self.actions, self.state, self.horizon, self.k, self.d).to(device)
 
@@ -78,13 +85,13 @@ class Feudal(object):
         if message.data == 2: #timed out. Check manager.py
             self.task.restartProtocol(restart = 1)
 
-    def get_action(self, s):
+    def get_action(self, s, s_w = None):
         net_out = self.net(torch.FloatTensor(s), self.m_lstm, self.w_lstm, self.goals_horizon)
         policy, goal, self.goals_horizon, self.m_lstm, self.w_lstm, m_value, w_value_ext, w_value_int, m_state = net_out
         self.temp = Temp(goal, policy, m_value, w_value_ext, w_value_int, m_state)
         choice = np.asscalar(self.choose(policy))
         action = self.actionMap[choice]
-        return np.array(action).ravel(), choice #single env
+        return np.array(action), choice #single env
 
     def choose(self, policies):
         m = Categorical(policies)
@@ -96,7 +103,7 @@ class Feudal(object):
         pass
 
     def store(self, s, a, r, sprime, aprime, done):
-        self.exp.push(a, r, 1 - done, self.temp.goal, self.temp.policy, self.temp.m_value, 
+        self.exp.push(s, a, sum(r), 1 - done, self.temp.goal, self.temp.policy, self.temp.m_value, 
                     self.temp.w_value_ext, self.temp.w_value_int, self.temp.m_state)
 
     def reset(self):

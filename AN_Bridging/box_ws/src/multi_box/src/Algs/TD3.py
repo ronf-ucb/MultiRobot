@@ -81,13 +81,10 @@ class Twin_DDPG(Agent):
         output = self.policyNet(torch.FloatTensor(s))
         i = np.random.random()
         if i < self.explore[0]:
-            #add in exploration 
+            #add in exploration TODO: put in OU noise
             noise = torch.from_numpy(np.random.normal(0, self.explore[1], 2))
             output = output + noise
         output = output.float()
-        msg.x = output[0][0]
-        msg.y = output[0][1]
-        self.pubs[self.name].publish(msg)
         return output, output[0]
         
     def train(self):

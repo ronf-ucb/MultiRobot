@@ -13,12 +13,14 @@ from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
 from matplotlib import pyplot as plt
 from boxTask import BoxTask
+from collections import namedtuple
+
+Info = namedtuple('Info',('prevPos', 'pos', 'blockPos', 'prevBlock', 'ori', 'prevOri', 'blockOri'))
 
 class BoxDoubleTask(BoxTask):
     def __init__(self):
         super(BoxDoubleTask, self).__init__()
-        self.actionMap = {0: (-3,-2), 1:(-2,-3), 2:(-3,-3), 3:(2,3), 4:(3,3), 5:(3,2), 6:(0,0)}
-        self.s_n = 18
+        self.s_n = 18 #TODO: check this dimension
 
 
     def extractInfo(self):
@@ -46,32 +48,52 @@ class BoxDoubleTask(BoxTask):
         fPrev, sPrev  = self.splitState(self.prev['S'].ravel().tolist())
         
         prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(fPrev, first)
-        res1 = self.checkPhase(pos, blockPos, ori, blockOri, self.phase)
-        r_1 = self.getAux(pos, prevPos, blockPos, prevBlock, ori, prevOri, self.phase)
+        first = Info(prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri)
 
         prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(sPrev, second)
-        res2 = self.checkPhase(pos, blockPos, ori, blockOri, self.phase)   
-        r_2 = self.getAux(pos, prevPos, blockPos, prevBlock, ori, prevOri, self.phase)
-        
-        fail1 = (res1[0] == -3)
-        fail2 = (res2[0] == -3)
-        success = self.phase == 3 and (res1[0] == 5 and res2[0] == 5)
-        restart = 1 if (fail1 or fail2 or success) else 0
+        second = Info(prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri)
 
-        changePhase = (res1[0] == 5 and res2[0] == 5)
-        r_1 = res1[0] if fail1 or changePhase else r_1[0]
-        r_2 = res2[0] if fail2 or changePhase else r_2[0] 
-        
-        if changePhase:
-            print(" ## Phase: ", self.phase, " complete! ##")
-            self.phase += 1
+        if first.pos[2] < .35 or second.pos[2] < .35:
+            return (-3, 1)
+        if self.phase == 1:
+            if blockPos[-1] < .3:
+                self.phase += 1
+                return (5, 0)
+            box_r = (blockPos[0] - prevBlock[0]) - .00625*(abs(blockOri))  
 
-        return ([r_1, r_2], restart)
+
+            vel_r = dist(first.prevPos, prevBlock) - dist(first.pos, blockPos)
+            vel_r += dist(second.prevPos, prevBlock) - dist(second.prevPos, blockPos)
+
+            ori_r = abs(blockOri - first.ori)
+            ori_r += abs(blockOri - second.ori)
+
+            r = 8*box_r + 2*vel_r - .08*ori_r - .005 #subtract constant to encourage efficiency
+        if self.phase == 2:
+            if first.pos[0] > .45 and second.pos[0] > .45:
+                print('Success!')
+                return (5, 1)
+            
+            vel_r = first.pos[0] - first.prevPos[0] 
+            vel_r += second.pos[0] - second.prevPos[0]
+
+            y_r = .1* (abs(first.pos[1] - blockPos[1]) + abs(second.pos[1] - blockPos[1]))
+
+            #ori_r = .05* (abs(first.ori) + abs(second.ori))
+
+            r = vel_r - y_r - .005 #subtract constant to encourae efficiency
+        return (r, 0)
 
     
     def splitState(self, s):
-        first = s[:12]
-        second = s[12:18] + s[6:12]
+        box = np.array(s[6:12])
+        first = np.array(s[:12])
+        second = np.array(s[12:18] + s[6:12])
+        
+        #append relative information to include observations for each local state
+        first = np.hstack((first, second[:2] - first[:2], second[5:6]))
+        second = np.hstack((second, first[:2] - second[:2], first[5:6]))
+
         return first, second
 
 
@@ -82,15 +104,6 @@ class BoxDoubleTask(BoxTask):
         restart = 0
         floats = floats[:self.s_n]
         first, second = self.splitState(floats)
-
-        if self.phase == 1:
-            first.append(0)
-            second.append(0)
-            floats.append(0)
-        else:
-            first.append(1)
-            second.append(1)
-            floats.append(1)
         
         s = (np.array(floats)).reshape(1,-1)
         first = torch.FloatTensor(first).view(1,-1)
@@ -98,8 +111,8 @@ class BoxDoubleTask(BoxTask):
         a = (self.sendAction(s, [first, second]))
         if type(self.prev["S"]) == np.ndarray:
             r, restart = self.rewardFunction(s,a)   
-            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart)
-            self.currReward += sum(r)
+            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart) 
+            self.currReward += r
         self.prev["S"] = s
         self.prev["A"] = a
         s = s.ravel()

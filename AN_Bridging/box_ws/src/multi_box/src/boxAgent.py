@@ -267,7 +267,7 @@ if description == 'FEUDAL':
             }
     fun   = {
                 's':            13,
-                'u':            9,
+                'u':            8,
                 'c':            9,
                 'k':            16,
                 'd':            256,

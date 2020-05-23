@@ -43,7 +43,7 @@ class BoxTask(Task):
         if pos[-1] < .35:
             return (-3, 1)
         if phase == 1:
-            if abs(pos[0] - blockPos[0]) < .7 and abs(pos[1] - blockPos[1]) < .5 and abs(ori - blockOri) < .3:
+            if abs(pos[0] - blockPos[0]) < .7 and abs(pos[1] - blockPos[1]) < .5 and abs(ori - blockOri) < .5:
                 return (5, 0)
         if phase == 2:
             if blockPos[2] < .3:
@@ -53,9 +53,13 @@ class BoxTask(Task):
                 return (5, 1)
         return (0,0)
     
+    
     def getAux(self, pos, prevPos, blockPos, prevBlock, ori, prevOri, phase):
         if phase == 1:
             dist_r = (dist(prevPos, blockPos) - dist(pos, blockPos))
+
+            #TEST 
+            #dist_r = pos[0] - prevPos[0]
     
             prevVec = unitVector(vector(prevOri))
             vec = unitVector(vector(ori))
@@ -65,7 +69,10 @@ class BoxTask(Task):
             currDot = dot(vec, goal)
             ori_r = currDot - prevDot
 
-            return ((dist_r+ 2*ori_r) * self.w_phase1, 0)
+            #TEST
+            #ori_r = abs(prevOri) - abs(ori)
+
+            return ((dist_r + 2*ori_r) * self.w_phase1, 0)
 
 
         if phase == 2:
@@ -73,15 +80,16 @@ class BoxTask(Task):
             rob_r = pos[0] - prevPos[0]
             dist_r = .5*(dist(prevPos, blockPos) - dist(pos, blockPos))
             
-            return ((block_r + rob_r + dist_r) * self.w_phase1, 0)
+            return ((block_r + rob_r + dist_r) * self.w_phase2, 0)
 
         if phase == 3:
             goal = np.array([.80, blockPos[1], pos[2]])
             delta = dist(pos, goal)
             prevDelta = dist(prevPos, goal)
+            dist_r = prevDelta - delta
             y_r = -abs(blockPos[1]-pos[1])
 
-            return ((prevDelta - delta + .15*y_r - .05 * abs(ori)) * self.w_phase3, 0)
+            return ((dist_r  + .15*y_r - .05 * abs(ori)) * self.w_phase3, 0)
 
     def unpack(self, prevS, s):
         prevPos = np.array(prevS[:3])
@@ -101,7 +109,6 @@ class BoxTask(Task):
         if res[0] != 0:
             return res
         return self.getAux(pos, prevPos, blockPos, prevBlock, ori, prevOri, self.phase)
-
     
     def receiveState(self, msg):
         floats = vrep.simxUnpackFloats(msg.data)
@@ -152,7 +159,7 @@ class BoxTask(Task):
     def postTraining(self):
         #valueOnly = True if self.a == "argmax" else False
         self.plotRewards()
-        self.plotLoss(True, 'Loss Over Iterations w/ Moving Average', "Actor Loss over Iterations w/ Moving Average")
+        self.plotLoss(False, 'Loss Over Iterations w/ Moving Average', "Actor Loss over Iterations w/ Moving Average")
         #self.agent.saveModel()
     
     def plotLoss(self, valueOnly = False, title1 = "Critic Loss over Iterations", title2 = "Actor Loss over Iterations"):
@@ -166,11 +173,16 @@ class BoxTask(Task):
         grid = True
         plt.show()
         if not valueOnly:
-            plt.plot(range(len(self.agent.actorLoss)), self.agent.actorLoss)
+            x = range(len(self.agent.actorLoss))
+            window = np.ones(int(15))/float(15)
+            line = np.convolve(self.agent.actorLoss, window, 'same')
+            plt.plot(x, line, 'r')
+            plt.plot(x, self.agent.actorLoss)
             plt.title(title2)
             plt.show()
     
     def plotRewards(self):
+        print(len(self.rewards))
         x = range(len(self.rewards))
         plt.plot(x, self.rewards)
         plt.title("Rewards Over Episodes w/ Moving Average")

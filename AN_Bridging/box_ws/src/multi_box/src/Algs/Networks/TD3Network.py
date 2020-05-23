@@ -15,11 +15,9 @@ class TD3Network(Network):
         self.tan = nn.Tanh()
 
     def forward(self, inputs):
+        print(inputs)
         inputs = torch.FloatTensor(inputs)
-        if self.pre:
-            inputs = self.preProcessIn(inputs)
-        
-        outputs = self.features(inputs)
-        outputs = self.mean_range * self.tan(outputs/5).view(-1, self.out_n)
+        outputs = super(TD3Network, self).forward(inputs)
+        outputs = self.mean_range * self.tan(outputs).view(-1, self.neurons[-1])
         return outputs
 
