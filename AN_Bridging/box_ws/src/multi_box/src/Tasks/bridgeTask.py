@@ -39,29 +39,32 @@ class BridgeTask(Task):
         msg = Vector3()
         action, ret = self.agent.get_action(s, w_s)
         for (i, key) in enumerate(self.pubs.keys()):
-            msg.x, msg.y = (action[i][0], action[i][1])
+            msg.x, msg.y, msg.z = (action[i][0], action[i][1], action[i][2])
             self.pubs[key].publish(msg)
         return ret
     
     def rewardFunction(self, s_n, a):
-        tank, bridge = self.splitState(s_n)
-        prevTank, prevBridge = self.splitState(self.prev['S'])
-        if bridge[2] < .3 or tank[2] < .3:
+        tank, bridge = self.splitState(s_n.ravel())
+        prevTank, prevBridge = self.splitState(self.prev['S'].ravel())
+        if bridge[2] < .1 or tank[2] < .1:
             return (-2, 1)
         if self.phase == 1:
-            if bridge[0] > .5: # TODO: Check this benchmark for bridge
+            if bridge[0] > -.5: # TODO: Check this benchmark for bridge
+                print( '## Phase 1 Complete ##')
                 return (5, 0)
             vel_r = (tank[0] - prevTank[0]) + (bridge[0] - prevBridge[0])
             ori_r = -1 * (abs(tank[5]) + abs(bridge[5]))
             r = vel_r + ori_r
         if self.phase == 2:
-            if tank[0] > .5: # TODO: Check this benchmark for cross
+            if tank[0] > -.4: # TODO: Check this benchmark for cross
+                print(' ## Phase 2 Complete ##')
                 return (5, 0)
             vel_r = (tank[0] - prevTank[0])
             move_r = -1 * dist(prevBridge[:3], bridge[:3])
             r = vel_r + move_r
         if self.phase == 3:
-            if bridge[0] > .7: # TODO: Check this benchmark for pull up
+            if bridge[0] > -.3: # TODO: Check this benchmark for pull up
+                print(' ## Success ##')
                 return (10, 1)
             vel_r = (bridge[0] - prevBridge[0])
             r = vel_r 
@@ -72,9 +75,8 @@ class BridgeTask(Task):
         # Assumption: tanker first then bridge
         tank = np.array(s[:7])
         bridge = np.array(s[7:13])
-
-        tank = np.hstack((tank, bridge[:3] - tank[:3], bridge[5:6]))
-        bridge = np.hstack((bridge, tank[:3] - bridge[:3], tank[5:6]))
+        tank = np.hstack((tank, bridge[:2] - tank[:2], bridge[5:6]))
+        bridge = np.hstack((bridge, tank[:2] - bridge[:2], tank[5:7]))
         return tank, bridge
 
 

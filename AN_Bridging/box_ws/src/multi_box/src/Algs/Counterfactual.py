@@ -32,7 +32,9 @@ class Counter(object):
         self.agents         = params['agents']
 
         self.pubs = {}
-        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2), 8:(0,0)} 
+        # self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2), 8:(0,0)}
+        self.actionMap      = {0: (-2,-1,-1), 1:(-1,-2,-1), 2:(-2,-2,-1), 3:(1,2,-1), 4:(2,2,-1), 
+                                5:(2,1,-1), 6: (-2, 2, -1), 7: (2, -2, 0), 8:(0,0,1)}
         for key in self.agents.keys():
             bot             = self.agents[key]
             self.pubs[key]  = rospy.Publisher(bot['pub'], Vector3, queue_size = 1)
@@ -52,7 +54,7 @@ class Counter(object):
         if self.homogenous:
             self.actor      = CounterActor(self.aPars, self.aTrain).to(device) 
         else:
-            self.actor      = [CounterActor(self.aPars, self.aTrain) for i in range(len(agents))]
+            self.actor      = [CounterActor(self.aPars, self.aTrain) for i in range(len(self.agents))]
 
         for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
             target_param.data.copy_(param)
@@ -190,11 +192,18 @@ class Counter(object):
             #print('actor_loss', actor_loss)
             self.actorLoss.append(actor_loss)
 
-
-            self.actor.optimizer.zero_grad()
-            actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad_norm)
-            self.actor.optimizer.step()
+            if self.homogenous:
+                self.actor.optimizer.zero_grad()
+                actor_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad_norm)
+                self.actor.optimizer.step()
+            else:
+                for actor in self.actor:
+                    actor.optimizer.zero_grad()
+                actor_loss.backward()
+                for actor in self.actor:
+                    torch.nn.utils.clip_grad_norm_(actor.parameters(), self.clip_grad_norm)
+                    actor.optimizer.step()    
             self.exp = Memory()
             self.totalSteps += 1
 

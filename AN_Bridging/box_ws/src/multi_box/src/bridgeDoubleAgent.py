@@ -13,6 +13,7 @@ from Algs.FuN import Feudal
 from Algs.Counterfactual import Counter
 from Algs.CounterFeudal import CounterFeudal
 from Tasks.boxDoubleTask import BoxDoubleTask
+from Tasks.bridgeTask import BridgeTask
 
 NAME = 'bot'
 NAMETWO = 'bot2'
@@ -34,8 +35,8 @@ if description == "COUNTER":
     actPars = {
                 #define hidden state size and input state size...
                 'h_state_n':    256,
-                'x_state_n':    10, #6 robot, 3 observation, 1: (-1,0,1) for state of rope
-                'u_n':          10, # For tanker: 8 movement, 2 front and back interactions # For bridger: 10 movement
+                'x_state_n':    10, #6 robot, 4 observation, 1: (-1,0,1) for state of rope
+                'u_n':          9, # For tanker: 6 movement, 3 rope # For bridger: 9 movement
                 'mu':           torch.Tensor([0 for i in range(10)]),
                 'std':          torch.Tensor([1 for i in range(10)]),
                 'share_params': False
@@ -46,10 +47,10 @@ if description == "COUNTER":
                 }
 
     valPars = {
-                'neurons':      (13, 256, 256, actPars['u_n']), #true state: 6*2 true state, 1: (-1, 0, 1) for state of rope 
+                'neurons':      (15, 256, 256, actPars['u_n']), #true state: 6*2 true state, 1: (-1, 0, 1) for state of rope, other action, ID
                 'act':          ['F.leaky_relu','F.leaky_relu'],
-                'mu':           torch.Tensor([0 for i in range(13)]),
-                'std':          torch.Tensor([1 for i in range(13)]),
+                'mu':           torch.Tensor([0 for i in range(15)]),
+                'std':          torch.Tensor([1 for i in range(15)]),
                 'trainMode':    True,
                 'load':         False,
                 }        
@@ -60,7 +61,7 @@ if description == "COUNTER":
                 'w_phase3':     1,
                 'buffer':       10000,
                 'gamma':        .99,
-                'step':         30,
+                'step':         40,
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
-    tanker = Counter(params, NAME, BoxDoubleTask())
+    tanker = Counter(params, NAME, BridgeTask())
