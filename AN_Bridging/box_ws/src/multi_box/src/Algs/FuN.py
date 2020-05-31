@@ -88,7 +88,7 @@ class Feudal(object):
     def get_action(self, s, s_w = None):
         net_out = self.net(torch.FloatTensor(s), self.m_lstm, self.w_lstm, self.goals_horizon)
         policy, goal, self.goals_horizon, self.m_lstm, self.w_lstm, m_value, w_value_ext, w_value_int, m_state = net_out
-        self.temp = Temp(goal, policy, m_value, w_value_ext, w_value_int, m_state)
+        self.temp = Temp(goal, policy, m_value, w_value_ext, w_value_int, m_state) # THIS IS INCORRECT
         choice = np.asscalar(self.choose(policy))
         action = self.actionMap[choice]
         return np.array(action), choice #single env

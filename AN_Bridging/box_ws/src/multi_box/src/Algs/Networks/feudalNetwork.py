@@ -92,10 +92,10 @@ class Worker(nn.Module):
         x = self.percep(x)
         hx, cx = self.lstm(x, (hx, cx))
 
-        value_ext = F.relu(self.fc_critic1(hx)) #added detach here
+        value_ext = F.relu(self.fc_critic1(hx))
         value_ext = self.fc_critic1_out(value_ext)
         
-        value_int = F.relu(self.fc_critic2(hx)) #added detach here
+        value_int = F.relu(self.fc_critic2(hx))
         value_int = self.fc_critic2_out(value_int)
 
         worker_embed = hx.view(hx.size(0), self.num_actions, self.k)

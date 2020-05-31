@@ -7,7 +7,7 @@ import numpy as np
 
 Transition = namedtuple('Transition',
                         ('state','action', 'reward',
-                         'mask', 'goal', 'policy', 'm_value', 'w_value_ext', 'w_value_int', 'm_state'))
+                         'mask', 'next_action', 'policy', 'next_state'))
 
 
 class Memory(object):
@@ -15,11 +15,9 @@ class Memory(object):
         self.memory = []
         self.position = 0
 
-    def push(self, state, action, reward, mask, goal = None, 
-            policy = None, m_value = None, w_value_ext = None, w_value_int = None, m_state = None):
+    def push(self, state, action, reward, mask, next_action, policy, next_state):
         """Saves a transition."""
-        self.memory.append(Transition(state, action, reward, mask,
-                           goal, policy, m_value, w_value_ext, w_value_int, m_state))
+        self.memory.append(Transition(state, action, reward, mask, next_action, policy, next_state))
 
     def sample(self, batch = 0):
         # Sample contiguous 

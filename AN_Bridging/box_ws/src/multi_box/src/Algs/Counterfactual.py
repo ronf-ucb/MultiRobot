@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from agent import Agent
 from Networks.network import Network
 from Networks.feudalNetwork import FeudalNetwork
-from Buffers.FeudalBuffer import Memory
+from Buffers.CounterFactualBuffer import Memory
 from collections import namedtuple
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,7 +32,7 @@ class Counter(object):
         self.agents         = params['agents']
 
         self.pubs = {}
-        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
+        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2), 8:(0,0)} 
         for key in self.agents.keys():
             bot             = self.agents[key]
             self.pubs[key]  = rospy.Publisher(bot['pub'], Vector3, queue_size = 1)
@@ -62,7 +62,9 @@ class Counter(object):
         self.stop           = False
 
         self.exp            = Memory()
-        self.temp_policy    = None
+        self.temp_first     = None
+        self.temp_second    = None 
+
         self.totalSteps     = 0
 
         self.reset()
@@ -85,7 +87,8 @@ class Counter(object):
         a1 = self.choose(policy1)
         policy2, h_new2 = self.actor(torch.FloatTensor(s_split[1]), self.h[1])
         a2 = self.choose(policy2)
-        self.temp_policy = [policy1, policy2]
+        self.temp_second = self.temp_first # due to implementation in previous 
+        self.temp_first = [policy1, policy2]
         action = [self.actionMap[a1], self.actionMap[a2]]
         return np.array(action), [a1, a2]
 
@@ -99,8 +102,8 @@ class Counter(object):
     def saveModel(self):
         pass
 
-    def store(self, s, a, r, sprime, aprime, done):
-        self.exp.push(s, a, r, 1 - done, aprime, self.temp_policy, sprime)
+    def store(self, s, a, r, sprime, aprime, done, s_w):
+        self.exp.push(s, a, r, 1 - done, aprime, self.temp_second, sprime)
 
     def reset(self):
         self.h = [torch.zeros(1, self.h_state_n).to(device) for i in range(len(self.agents))]
@@ -115,9 +118,6 @@ class Counter(object):
             total_norm += param_norm.item() ** 2
         grad_norm = total_norm ** (1. / 2)
         return grad_norm
-
-    def get_lambda_targets(self, rewards, masks, gamma, values):
-        pass
 
     def get_lambda_targets(self, rewards, mask, gamma, target_qs):
         target_qs = target_qs.squeeze()
@@ -134,9 +134,9 @@ class Counter(object):
         if len(self.exp) > self.step:
             transition = self.exp.sample()
             states = torch.squeeze(torch.Tensor(transition.state)).to(device)
-            states_next = torch.squeeze(torch.Tensor(transition.m_value)).to(device) #m_value was used as placeholder
+            states_next = torch.squeeze(torch.Tensor(transition.next_state)).to(device) 
             actions = torch.Tensor(transition.action).float().to(device)
-            actions_next = torch.Tensor(transition.goal).float().to(device) #goal was used as placeholder...
+            actions_next = torch.Tensor(transition.next_action).float().to(device) 
             rewards = torch.Tensor(transition.reward).to(device)
             masks = torch.Tensor(transition.mask).to(device)
             policies = zip(*transition.policy)

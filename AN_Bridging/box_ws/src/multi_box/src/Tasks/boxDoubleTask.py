@@ -110,8 +110,8 @@ class BoxDoubleTask(BoxTask):
         second = torch.FloatTensor(second).view(1,-1)
         a = (self.sendAction(s, [first, second]))
         if type(self.prev["S"]) == np.ndarray:
-            r, restart = self.rewardFunction(s,a)   
-            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart) 
+            r, restart = self.rewardFunction(s, self.prev['A'])   
+            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart, [first, second]) 
             self.currReward += r
         self.prev["S"] = s
         self.prev["A"] = a
