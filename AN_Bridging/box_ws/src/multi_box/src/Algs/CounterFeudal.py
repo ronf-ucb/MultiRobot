@@ -245,7 +245,7 @@ class CounterFeudal(object):
             loss = actor_loss + critic_loss 
             self.actor.optimizer.zero_grad()
             self.critic.optimizer.zero_grad()
-            loss.backward(retain_graph = True)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad_norm)
             self.critic.optimizer.step()
             self.actor.optimizer.step()
