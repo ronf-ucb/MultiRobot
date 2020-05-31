@@ -138,6 +138,7 @@ class CounterFeudal(object):
         self.worker_exp.push(s, self.temp_second.policies, self.temp_second.goal, a, r, 1 - done, aprime, sprime)
 
     def reset(self):
+        self.train(True)
         self.iteration = 0
         self.h = [torch.zeros(1, 1, self.h_state_n).to(device) for i in range(len(self.agents))]
         self.temp_first, self.temp_second = (None, None)
@@ -169,7 +170,7 @@ class CounterFeudal(object):
         return ret.unsqueeze(1)
 
     def train(self, episode_done = False): 
-        if len(self.worker_exp) > self.step:
+        if episode_done and len(self.worker_exp) > self.step:
             # UNPACK REPLAY 
             m_transition    = self.manager_exp.sample()
             w_transition    = self.worker_exp.sample()
@@ -204,7 +205,7 @@ class CounterFeudal(object):
             self.manager.optimizer.zero_grad()  
             self.m_critic.optimizer.zero_grad()
             loss = m_critic_loss + m_actor_loss
-            loss.backward(retain_graph=True)
+            loss.backward()
             self.m_critic.optimizer.step()
             self.manager.optimizer.step()
 
@@ -253,6 +254,9 @@ class CounterFeudal(object):
             self.manager_exp = ManagerMemory()
             self.worker_exp = WorkerMemory()
             self.totalSteps += 1
+
+            # consider detaching our goal as well?
+            self.h = [h.detach() for h in self.h]
 
             #UPDATE TARGET NETWORK:
             for target_param, param in zip(self.target.parameters(), self.critic.parameters()):

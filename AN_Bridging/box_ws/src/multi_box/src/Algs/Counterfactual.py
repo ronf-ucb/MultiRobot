@@ -45,10 +45,14 @@ class Counter(object):
         self.x_state_n      = self.aPars['x_state_n']
         self.u_n            = self.aPars['u_n']
         self.clip_grad_norm = self.aTrain['clip']
+        self.homogenous     = self.aPars['share_params']
 
         self.critic         = Network(self.vPars, self.vTrain).to(device)
         self.target         = Network(self.vPars, self.vTrain).to(device)
-        self.actor          = CounterActor(self.aPars, self.aTrain).to(device) 
+        if self.homogenous:
+            self.actor      = CounterActor(self.aPars, self.aTrain).to(device) 
+        else:
+            self.actor      = [CounterActor(self.aPars, self.aTrain) for i in range(len(agents))]
 
         for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
             target_param.data.copy_(param)
@@ -83,10 +87,17 @@ class Counter(object):
             self.task.restartProtocol(restart = 1)
 
     def get_action(self, s_true, s_split):
-        policy1, h_new1 = self.actor(torch.FloatTensor(s_split[0]), self.h[0])
-        a1 = self.choose(policy1)
-        policy2, h_new2 = self.actor(torch.FloatTensor(s_split[1]), self.h[1])
-        a2 = self.choose(policy2)
+        if self.homogenous:
+            policy1, h_new1 = self.actor(torch.FloatTensor(s_split[0]), self.h[0])
+            a1 = self.choose(policy1)
+            policy2, h_new2 = self.actor(torch.FloatTensor(s_split[1]), self.h[1])
+            a2 = self.choose(policy2)
+        else:
+            policy1, h_new1 = self.actor[0](torch.FloatTensor(s_split[0]), self.h[0])
+            a1 = self.choose(policy1)
+            policy2, h_new2 = self.actor[1](torch.FloatTensor(s_split[1]), self.h[1])
+            a2 = self.choose(policy2)
+        self.h = [h_new1, h_new2]
         self.temp_second = self.temp_first # due to implementation in previous 
         self.temp_first = [policy1, policy2]
         action = [self.actionMap[a1], self.actionMap[a2]]
@@ -106,7 +117,8 @@ class Counter(object):
         self.exp.push(s, a, r, 1 - done, aprime, self.temp_second, sprime)
 
     def reset(self):
-        self.h = [torch.zeros(1, self.h_state_n).to(device) for i in range(len(self.agents))]
+        self.train(True)
+        self.h = [torch.zeros(1, 1, self.h_state_n).to(device) for i in range(len(self.agents))]
         return 
 
     def get_grad_norm(self, model):
@@ -130,8 +142,8 @@ class Counter(object):
                 mask[t] * (rewards[t] + (1 - self.td_lambda) * gamma * target_qs[t + 1])
         return ret.unsqueeze(1)
 
-    def train(self):
-        if len(self.exp) > self.step:
+    def train(self, episode_done = False):
+        if episode_done and len(self.exp) > self.step:
             transition = self.exp.sample()
             states = torch.squeeze(torch.Tensor(transition.state)).to(device)
             states_next = torch.squeeze(torch.Tensor(transition.next_state)).to(device) 
@@ -217,7 +229,6 @@ class CounterActor(nn.Module):
         inp = self.fc1(x)
 
         inp = torch.unsqueeze(inp, 0)
-        h = torch.unsqueeze(h, 0)
 
         out, h_new = self.gru(inp, h)
         out = self.fc2(out)

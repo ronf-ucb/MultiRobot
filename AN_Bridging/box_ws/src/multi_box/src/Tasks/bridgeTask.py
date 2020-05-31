@@ -1,258 +1,153 @@
 #! /usr/bin/env python
 
+#! /usr/bin/env python
+
 from task import Task 
-from utils import distance
+from task import distance as dist
 import numpy as np 
 import torch 
 import torch.nn as nn
 import vrep
+import rospy
 from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
+from matplotlib import pyplot as plt
+from boxTask import BoxTask
+from collections import namedtuple
+
+Info = namedtuple('Info',('prevPos', 'pos', 'blockPos', 'prevBlock', 'ori', 'prevOri', 'blockOri'))
 
 class BridgeTask(Task):
-    def __init__(self, action):
-        super(BridgeTask, self).__init__(action)
-        self.prev = {"S": None, "A": None, "D": None}
-        self.actionMap = {0: (-3,-1), 1:(-1,-3), 2:(-3,-3), 3:(1,3), 4:(3,3), 5:(3,1), 6:(0,0)}
-        self.tankRewards = {"velocity": [], "location": [], "relativeLocation": [], "orientation": [], "relativeOrientation":[] , "total": []}
-        self.bridgeRewards = {"velocity": [], "location": [], "relativeLocation": [], "orientation": [], "relativeOrientation": [], "total":[]}
-        self.tankRun = {"velocity": 0, "location": 0, "relativeLocation": 0, "orientation": 0, "relativeOrientation":0 , "total": 0}
-        self.bridgeRun = {"velocity": 0, "location": 0, "relativeLocation": 0, "orientation": 0, "relativeOrientation": 0, "total":0}
-    
-        self.phases = [False, False, False] #bridge, across, pull
-        self.goal = 0
+    def __init__(self):
+        super(BridgeTask, self).__init__()
+        self.prev = {"S": None, "A": None}
+        self.currReward = 0
+        self.rewards = []
+        self.phase = 1
 
-    
-    ######### EXTRACT INFO ###########
+
     def extractInfo(self):
-        self.name = self.agent.name
         self.vTrain = self.agent.vTrain
-        self.w_loc = self.vTrain['alpha1']
-        self.w_vel = self.vTrain['alpha2']
-        self.w_ori = self.vTrain['alpha3']
-        self.w_age = self.vTrain['lambda']
-        self.u_n = self.agent.u_n
-        self.agents = self.agent.agents
-        self.state_n = self.agent.state_n
-        self.explore = self.agent.explore
         self.pubs = self.agent.pubs
         self.trainMode = self.agent.trainMode
+        self.agents = self.agent.agents
+        self.name = self.agent.name
+        rospy.Subscriber(self.agents[self.name]['sub'], String, self.receiveState, queue_size = 1) 
+ 
+    def sendAction(self, s, w_s):
+        #pass in the local state of agent and its name according to self.agents
+        msg = Vector3()
+        action, ret = self.agent.get_action(s, w_s)
+        for (i, key) in enumerate(self.pubs.keys()):
+            msg.x, msg.y = (action[i][0], action[i][1])
+            self.pubs[key].publish(msg)
+        return ret
     
-    ############# SEND ACTION #################
-    def sendAction(self, s):
-        if self.a == "argmax":
-            q = self.valueNet.predict(s)
-            i = np.random.random()
-            if i < self.explore:
-                index = np.random.randint(self.u_n)
-            else:
-                index = np.argmax(q.detach().numpy())
-            tank, bridge = self.index_to_action(index)
-            self.pubs['tanker'].publish(tank)
-            self.pubs['bridger'].publish(bridge)
-            return np.array([index]).reshape(1,-1), index >= (self.u_n - 2)
-        if self.a == "p_policy":
-            output = self.policyNet(torch.FloatTensor(s))
-            action_mean = output[:, :self.u_n]
-            action_logstd = output[:, self.u_n:]
-            action_std = torch.exp(action_logstd)
-            action = (torch.normal(action_mean, action_std).detach().numpy()).ravel()
-            if action[self.u_n - 2]>0: #rope 
-                rope = 1 if action[self.u_n - 1] > 0 else 2
-            if action[self.u_n - 2]<=0: #neutral
-                rope = -1 if action[self.u_n - 1] >0 else 0
-            tankmsg = Vector3()
-            bridgemsg = Vector3()
+    def rewardFunction(self, s_n, a):
+        tank, bridge = self.splitState(s_n)
+        prevTank, prevBridge = self.splitState(self.prev['S'])
+        if bridge[2] < .3 or tank[2] < .3:
+            return (-2, 1)
+        if self.phase == 1:
+            if bridge[0] > .5: # TODO: Check this benchmark for bridge
+                return (5, 0)
+            vel_r = (tank[0] - prevTank[0]) + (bridge[0] - prevBridge[0])
+            ori_r = -1 * (abs(tank[5]) + abs(bridge[5]))
+            r = vel_r + ori_r
+        if self.phase == 2:
+            if tank[0] > .5: # TODO: Check this benchmark for cross
+                return (5, 0)
+            vel_r = (tank[0] - prevTank[0])
+            move_r = -1 * dist(prevBridge[:3], bridge[:3])
+            r = vel_r + move_r
+        if self.phase == 3:
+            if bridge[0] > .7: # TODO: Check this benchmark for pull up
+                return (10, 1)
+            vel_r = (bridge[0] - prevBridge[0])
+            r = vel_r 
+        return (r, 0)
 
-            tankmsg.x = action[0]
-            tankmsg.y = action[1]
-            tankmsg.z = rope 
-            bridgemsg.x = action[2]
-            bridgemsg.y = action[3]
-            self.pubs['tanker'].publish(tankmsg)
-            self.pubs['bridger'].publish(bridgemsg)
-            return action.reshape(1,-1), action[self.u_n -2] > 0
-        return 
+    
+    def splitState(self, s):
+        # Assumption: tanker first then bridge
+        tank = np.array(s[:7])
+        bridge = np.array(s[7:13])
 
-    def index_to_action(self, index):
-        tankmsg = Vector3()
-        bridgemsg = Vector3()
-        if index >= 49:
-            tankmsg.x = 0
-            tankmsg.y = 0
-            tankmsg.z = index - 49
-            bridgemsg.x = 0
-            bridgemsg.y = 0
-        else:
-            tank = self.actionMap[index // 7]
-            bridge = self.actionMap[index % 7]
-            tankmsg.x = tank[0]
-            tankmsg.y = tank[1]
-            tankmsg.z = -1
-            bridgemsg.x  = bridge[0]
-            bridgemsg.y = bridge[1]
-        return (tankmsg, bridgemsg)
-
-    ########## REWARD FUNCTION ###############
-    def rewardFunction(self, s, usedRope): 
-        s = s.ravel()
-        
-        r = self.checkPhase(s)
-        if r != 0:
-            return r
-
-        prevS = self.prev["S"].ravel()
-        pos = np.array(s[:3])
-        prevPos = np.array(prevS[:3])
-        ori = s[5]
-        prevOri = prevS[5]
+        tank = np.hstack((tank, bridge[:3] - tank[:3], bridge[5:6]))
+        bridge = np.hstack((bridge, tank[:3] - bridge[:3], tank[5:6]))
+        return tank, bridge
 
 
-        R_loc, R_vel, R_ori = self.agentReward(pos, prevPos, ori, prevOri)
-        R_own = R_loc + R_vel + R_ori
-
-        self.tankRun["location"] += R_loc 
-        self.tankRun['velocity'] += R_vel
-        self.tankRun["orientation"] += R_ori 
-
-        
-        R_age = 0
-        i = 0
-        for key in self.agents.keys():
-            botPars = self.agents[key]
-            oPos = s[i: i + 3]
-            prevOPos = np.array(prevS[i: i+3])
-            R_loc, R_vel, R_ori = self.agentReward(oPos, prevOPos, s[i + 5], prevS[i+5])
-
-            R_agents = R_loc + R_vel + R_ori
-            self.bridgeRun["location"] += R_loc 
-            self.bridgeRun['velocity'] += R_vel
-            self.bridgeRun["orientation"] += R_ori 
-
-            deltaX = abs(oPos[0]) - abs(pos[0])
-            deltaY = abs(oPos[1]) - abs(pos[1])
-            relativeLoc = self.w_loc * (self.prev["D"][0] - deltaX + self.prev["D"][1] - deltaY)
-            R_age += relativeLoc  #we don't like it when the robots are far apart
-            relativeOri = 0#abs(ori - s[i + 3]) * self.w_ori
-            R_age -= relativeOri
-
-            i += botPars["n"]
-        
-
-        self.tankRun["relativeLocation"] -= relativeLoc 
-        self.bridgeRun["relativeLocation"] -= relativeLoc 
-        self.tankRun["relativeOrientation"] -= relativeOri 
-        self.bridgeRun["relativeOrientation"] -= relativeOri
-
-
-        R_rope = -3 if usedRope else 0
-        reward = R_own + self.w_age * R_age + R_rope
-
-        self.tankRun['total'] += reward
-        self.bridgeRun['total'] += reward
-        return reward
-
-    def checkPhase(self, state):
-        pos0 = np.array(state[:3])
-        pos1 = np.array(state[self.agents[self.name]["n"]: self.agents[self.name]["n"] + 3])
-        if distance(pos0, self.goal) <.03 or distance(pos1, self.goal) <.03:
-            return 50
-        if pos0[2] <= .1 or pos1[2] <= .1:
-            return -10
-        if not self.phases[0] and pos1[0] > -.52: #achieved BRIDGE phase. Adjust accordingly
-            self.phases[0] = True 
-            return 15
-        if not self.phases[1] and pos0[0] > -.4: #achieved CROSS phase. Adjust accordingly
-            self.phases[1] = True 
-            return 20
-        if not self.phases[2] and pos1[0] > -.35: #achieved PULL phase. Adjust accordingly
-            self.phases[2] = True
-            return 25
-        return 0
-
-    def agentReward(self, pos, prevPos, ori, prevOri):
-        '''Calculate distance from the goal location'''
-        deltas = self.goal - pos
-        scaleX = np.exp(5 - 5*abs(deltas[0]))
-        scaleY = np.exp(5*abs(deltas[1]))
-        R_loc = deltas[0] * 2 * self.w_loc
-
-        '''Add the movement in x and subtract the movement in y'''
-        deltas = pos - prevPos
-        deltaX = 5 * deltas[0] * self.w_vel #* scaleX #positive is good 
-        deltaY = abs(deltas[1]) * self.w_vel# * scaleY
-        R_vel = (deltaX - deltaY)
-
-
-        '''Calculate the delta of angle towards the goal. Subtract reward '''
-        delta = np.abs(prevOri) - np.abs(ori)
-        R_ori = delta *self.w_ori - (np.abs(ori) * .1)
-
-        return (R_loc, R_vel, R_ori)
-
-    ######### RECEIVE STATE #############
     def receiveState(self, msg):
         floats = vrep.simxUnpackFloats(msg.data)
-        self.goal = np.array(floats[-4:-1])
-        fail= floats[-1]
-        s = (np.array(floats[:self.state_n])).reshape(1,-1)
-
-        i, useRope = (self.sendAction(s))
+        fail = floats[-1]
+        floats = floats[:-1]
+        restart = 0
+        first, second = self.splitState(floats)
+        
+        s = (np.array(floats)).reshape(1,-1)
+        first = torch.FloatTensor(first).view(1,-1)
+        second = torch.FloatTensor(second).view(1,-1)
+        a = (self.sendAction(s, [first, second]))
         if type(self.prev["S"]) == np.ndarray:
-            penalty = 1 if useRope else 0
-            r = np.array(self.rewardFunction(s, penalty)).reshape(1,-1)
-            self.agent.store(self.prev['S'], self.prev["A"], r, s, i, fail)
-            self.agent.dataSize += 1
+            r, restart = self.rewardFunction(s, self.prev['A'])   
+            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart, [first, second]) 
+            self.currReward += r
         self.prev["S"] = s
-        self.prev["A"] = i
+        self.prev["A"] = a
         s = s.ravel()
-        self.prev["D"] = [abs(s[0]) - abs(s[4]), abs(s[1]) - abs(s[5]), abs(s[3]) - abs(s[7])]
-        if self.trainMode and self.agent.dataSize > self.agent.batch_size:
+        if self.trainMode:
             self.agent.train()
-        self.restartProtocol(fail)
+        self.restartProtocol(fail or restart)
         return 
 
-    ######### RESTART PROTOCOL ##########
-    def restartProtocol(self, restart = 0):
+    def restartProtocol(self, restart):
         if restart == 1:
+            print('Results:     Cumulative Reward: ', self.currReward, '    Steps: ', self.agent.totalSteps)
+            print("")
             for k in self.prev.keys():
                 self.prev[k] = None
-            self.goal = 0
-            if self.agent.trainIt > 0:
-                self.agent.valueLoss.append((self.agent.avgLoss)/self.agent.trainIt)
-            self.agent.avgLoss = 0    
-            self.agent.trainIt = 0
-            for k in self.tankRun.keys():
-                self.tankRewards[k].append(self.tankRun[k])
-                self.bridgeRewards[k].append(self.bridgeRun[k])
-                self.tankRun[k] = 0
-                self.bridgeRun[k] = 0
+            if self.currReward != 0:
+                self.rewards.append(self.currReward)
+            self.currReward = 0
+            self.phase = 1
+            self.agent.reset()
+
 
     ######### POST TRAINING #########
     def postTraining(self):
-        self.plotLoss(True, "Centralized Q Networks: Q Value Loss over Iterations")
+        #valueOnly = True if self.a == "argmax" else False
         self.plotRewards()
-        self.saveModel()
+        self.plotLoss(False, 'Loss Over Iterations w/ Moving Average', "Actor Loss over Iterations w/ Moving Average")
+        #self.agent.saveModel()
     
     def plotLoss(self, valueOnly = False, title1 = "Critic Loss over Iterations", title2 = "Actor Loss over Iterations"):
-        plt.plot(range(len(self.agent.valueLoss)), self.agent.valueLoss)
+        x = range(len(self.agent.valueLoss))
+        plt.plot(x, self.agent.valueLoss)
         plt.title(title1)
+        plt.legend()
+        window= np.ones(int(15))/float(15)
+        line = np.convolve(self.agent.valueLoss, window, 'same')
+        plt.plot(x, line, 'r')
+        grid = True
         plt.show()
         if not valueOnly:
-            plt.plot(range(len(self.actorLoss)), self.actorLoss)
+            x = range(len(self.agent.actorLoss))
+            window = np.ones(int(15))/float(15)
+            line = np.convolve(self.agent.actorLoss, window, 'same')
+            plt.plot(x, line, 'r')
+            plt.plot(x, self.agent.actorLoss)
             plt.title(title2)
             plt.show()
     
     def plotRewards(self):
-        for k in self.tankRewards.keys():
-            plt.plot(range(len(self.tankRewards[k])), self.tankRewards[k], label = k)
-        plt.title("Tank Rewards over Episodes")
+        print(len(self.rewards))
+        x = range(len(self.rewards))
+        plt.plot(x, self.rewards)
+        plt.title("Rewards Over Episodes w/ Moving Average")
         plt.legend()
+        window= np.ones(int(15))/float(15)
+        lineRewards = np.convolve(self.rewards, window, 'same')
+        plt.plot(x, lineRewards, 'r')
+        grid = True
         plt.show()
-        for k in self.bridgeRewards.keys():
-            plt.plot(range(len(self.bridgeRewards[k])), self.bridgeRewards[k], label = k)
-        plt.title("Bridge Rewards over Episodes")
-        plt.legend()
-        plt.show()
-
-

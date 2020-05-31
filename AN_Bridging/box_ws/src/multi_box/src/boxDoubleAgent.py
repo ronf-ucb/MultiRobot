@@ -39,6 +39,7 @@ if description == "COUNTER":
                 'u_n':          9,
                 'mu':           torch.Tensor([0 for i in range(15)]),
                 'std':          torch.Tensor([1 for i in range(15)]),
+                'share_params': True
             }
     actTrain = { 
                 'lr':           3e-4, 
