@@ -34,11 +34,11 @@ if description == "COUNTER":
 
     actPars = {
                 #define hidden state size and input state size...
-                'h_state_n':    256,
-                'x_state_n':    10, #6 robot, 4 observation, 1: (-1,0,1) for state of rope
+                'h_state_n':    128,
+                'x_state_n':    11, #6 robot, 3 observation, 1: (-1,0,1) for state of rope, 1 phase
                 'u_n':          9, # For tanker: 6 movement, 3 rope # For bridger: 9 movement
-                'mu':           torch.Tensor([0 for i in range(10)]),
-                'std':          torch.Tensor([1 for i in range(10)]),
+                'mu':           torch.Tensor([0 for i in range(11)]),
+                'std':          torch.Tensor([1 for i in range(11)]),
                 'share_params': False
             }
     actTrain = { 
@@ -47,10 +47,10 @@ if description == "COUNTER":
                 }
 
     valPars = {
-                'neurons':      (15, 256, 256, actPars['u_n']), #true state: 6*2 true state, 1: (-1, 0, 1) for state of rope, other action, ID
+                'neurons':      (16, 256, 256, actPars['u_n']), #true state: 6*2 true state, 1: (-1, 0, 1) for state of rope, other action, ID
                 'act':          ['F.leaky_relu','F.leaky_relu'],
-                'mu':           torch.Tensor([0 for i in range(15)]),
-                'std':          torch.Tensor([1 for i in range(15)]),
+                'mu':           torch.Tensor([0 for i in range(16)]),
+                'std':          torch.Tensor([1 for i in range(16)]),
                 'trainMode':    True,
                 'load':         False,
                 }        

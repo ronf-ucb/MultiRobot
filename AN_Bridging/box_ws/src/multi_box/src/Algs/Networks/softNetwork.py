@@ -34,7 +34,7 @@ class SoftNetwork(Network):
     def forward(self, inputs):
         x = self.preprocess(inputs)
         for i in range(self.n_layers):
-            x = eval('F.relu(self.fc{}(x))'.format(i+1))
+            x = eval('F.leaky_relu(self.fc{}(x))'.format(i+1))
         mu = self.output(x)
         log_std = self.log_std_output(x)
         log_std = torch.clamp(log_std, self.clamp[0], self.clamp[1])

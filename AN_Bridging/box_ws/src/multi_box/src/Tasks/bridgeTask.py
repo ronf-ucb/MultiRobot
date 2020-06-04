@@ -47,22 +47,25 @@ class BridgeTask(Task):
         tank, bridge = self.splitState(s_n.ravel())
         prevTank, prevBridge = self.splitState(self.prev['S'].ravel())
         if bridge[2] < .1 or tank[2] < .1:
-            return (-2, 1)
+            # THIS IS A TEST
+            return (0, 1)
         if self.phase == 1:
             if bridge[0] > -.5: # TODO: Check this benchmark for bridge
                 print( '## Phase 1 Complete ##')
+                self.phase += 1
                 return (5, 0)
-            vel_r = (tank[0] - prevTank[0]) + (bridge[0] - prevBridge[0])
-            ori_r = -1 * (abs(tank[5]) + abs(bridge[5]))
+            vel_r = ((tank[0] - prevTank[0]) + (bridge[0] - prevBridge[0])) * 2
+            ori_r = -1 * (abs(tank[5]) + abs(bridge[5])) * .08
             r = vel_r + ori_r
-        if self.phase == 2:
+        elif self.phase == 2:
             if tank[0] > -.4: # TODO: Check this benchmark for cross
                 print(' ## Phase 2 Complete ##')
+                self.phase += 1
                 return (5, 0)
             vel_r = (tank[0] - prevTank[0])
             move_r = -1 * dist(prevBridge[:3], bridge[:3])
             r = vel_r + move_r
-        if self.phase == 3:
+        elif self.phase == 3:
             if bridge[0] > -.3: # TODO: Check this benchmark for pull up
                 print(' ## Success ##')
                 return (10, 1)
@@ -73,8 +76,8 @@ class BridgeTask(Task):
     
     def splitState(self, s):
         # Assumption: tanker first then bridge
-        tank = np.array(s[:7])
-        bridge = np.array(s[7:13])
+        tank = np.hstack((np.array(s[:7]), np.array([self.phase])))
+        bridge = np.hstack((np.array(s[7:13]), np.array([self.phase])))
         tank = np.hstack((tank, bridge[:2] - tank[:2], bridge[5:6]))
         bridge = np.hstack((bridge, tank[:2] - bridge[:2], tank[5:7]))
         return tank, bridge
@@ -86,6 +89,7 @@ class BridgeTask(Task):
         floats = floats[:-1]
         restart = 0
         first, second = self.splitState(floats)
+        floats.append(self.phase)
         
         s = (np.array(floats)).reshape(1,-1)
         first = torch.FloatTensor(first).view(1,-1)

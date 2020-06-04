@@ -49,7 +49,7 @@ def plot_grad_flow(named_parameters):
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
 
 class OUNoise(object):
-    def __init__(self, action_space, mu=0.0, theta=0.15, max_sigma=0.3, min_sigma=0.3, decay = .8):
+    def __init__(self, action_space, mu=0.0, theta=0.15, max_sigma=1, min_sigma=0.5, decay = .9999):
         self.mu           = mu
         self.theta        = theta
         self.sigma        = max_sigma

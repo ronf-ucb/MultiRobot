@@ -3,7 +3,7 @@
 import numpy as np 
 import torch 
 import torch.nn as nn
-import math 
+import math
 import rospy
 from std_msgs.msg import String, Int8
 from geometry_msgs. msg import Vector3
@@ -12,6 +12,7 @@ from collections import OrderedDict
 from Algs.FuN import Feudal 
 from Algs.Counterfactual import Counter
 from Algs.CounterFeudal import CounterFeudal
+from Algs.ContinuousCounterFactual import CounterContinuous
 from Tasks.boxDoubleTask import BoxDoubleTask
 
 NAME = 'bot'
@@ -19,9 +20,10 @@ NAMETWO = 'bot2'
 
 algs = {
     10: "COUNTER",
-    11: "COUNTER_FEUDAL"
+    11: "COUNTER_FEUDAL",
+    12: "COUNTER_CONT"
 }
-ALGORITHM = 11
+ALGORITHM = 10
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
@@ -34,7 +36,7 @@ if description == "COUNTER":
 
     actPars = {
                 #define hidden state size and input state size...
-                'h_state_n':    128,
+                'h_state_n':    256,
                 'x_state_n':    15, #6 robot, 6 box, 3 observation
                 'u_n':          9,
                 'mu':           torch.Tensor([0 for i in range(15)]),
@@ -61,12 +63,13 @@ if description == "COUNTER":
                 'w_phase3':     1,
                 'buffer':       10000,
                 'gamma':        .99,
-                'step':         30,
+                'batch':        16,
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
     tanker = Counter(params, NAME, BoxDoubleTask())
 
 if description == "COUNTER_FEUDAL":
+
     agents = OrderedDict({
                 #ensure ordering matches ros messages
                 "bot": {"sub": "/state", "pub": "/action1"}, #joint action space
@@ -127,3 +130,48 @@ if description == "COUNTER_FEUDAL":
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, 
             "m_pars": mPars, "m_train": mTrain, "agents": agents}
     tanker = CounterFeudal(params, NAME, BoxDoubleTask())
+
+if description == "COUNTER_CONT":
+    agents = OrderedDict({
+                #ensure ordering matches ros messages
+                "bot": {"sub": "/state", "pub": "/action1"}, #joint action space
+                "bot2": {"sub": "/state", "pub": "/action2"}
+            })
+
+    actPars = {
+                'neurons':      (15, 256, 256, 2),
+                'act':          ['F.leaky_relu', 'F.leaky_relu'],
+                #define hidden state size and input state size...
+                'h_state_n':    128,
+                'x_state_n':    15, #6 robot, 6 box, 3 observation
+                'u_n':          2,
+                'mu':           torch.Tensor([0 for i in range(15)]),
+                'std':          torch.Tensor([1 for i in range(15)]),
+                'share_params': True,
+                'mean_range':   3
+            }
+    actTrain = { 
+                'lr':           3e-4, 
+                'clip':         1,
+                'clamp':        [-20, .5],
+                }
+
+    valPars = {
+                'neurons':      (22, 256, 256, 1), #true state: 18, actions: 4
+                'act':          ['F.leaky_relu','F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(22)]),
+                'std':          torch.Tensor([1 for i in range(22)]),
+                'trainMode':    True,
+                'load':         False,
+                }        
+    valTrain = {
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'gamma':        .99,
+                'batch_size':   256,
+                }
+    params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
+    tanker = CounterContinuous(params, NAME, BoxDoubleTask())
