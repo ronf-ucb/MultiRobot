@@ -85,7 +85,7 @@ class Twin_DDPG(Agent):
             noise = torch.from_numpy(np.random.normal(0, self.explore[1], 2))
             output = output + noise
         output = output.float()
-        return output, output[0]
+        return output[0]
         
     def train(self):
         if self.dataSize > 500 and self.trainMode:

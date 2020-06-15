@@ -70,7 +70,7 @@ class OUNoise(object):
     
     def get_noise(self, t=0):
         ou_state = self.evolve_state()
-        self.sigma = self.sigma*self.decay
+        self.sigma = max(self.min_sigma, self.sigma*self.decay)
         return ou_state
 
 ###################### TRPO - RELATED ####################

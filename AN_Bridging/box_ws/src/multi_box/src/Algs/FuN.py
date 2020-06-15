@@ -45,15 +45,6 @@ class Feudal(object):
         self.d              = self.fun['d']
         self.valueLoss      = []
 
-        #TEMPORARY:
-        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
-        #options             = len(self.tempMap)
-        #self.actionMap      = {}
-        #for i in range(self.actions):
-        #    first = i // options
-        #    second = i % options
-        #    self.actionMap[i] = (self.tempMap[first], self.tempMap[second])
-
         self.net            = FeudalNetwork(self.actions, self.state, self.horizon, self.k, self.d).to(device)
 
         self.m_discount     = self.vTrain['m_gamma']
@@ -88,10 +79,11 @@ class Feudal(object):
     def get_action(self, s, s_w = None):
         net_out = self.net(torch.FloatTensor(s), self.m_lstm, self.w_lstm, self.goals_horizon)
         policy, goal, self.goals_horizon, self.m_lstm, self.w_lstm, m_value, w_value_ext, w_value_int, m_state = net_out
-        self.temp = Temp(goal, policy, m_value, w_value_ext, w_value_int, m_state) # THIS IS INCORRECT
+        self.temp_second = self.temp_first
+        self.temp_first = Temp(goal, policy, m_value, w_value_ext, w_value_int, m_state)
         choice = np.asscalar(self.choose(policy))
         action = self.actionMap[choice]
-        return np.array(action), choice #single env
+        return choice #single env
 
     def choose(self, policies):
         m = Categorical(policies)
@@ -103,8 +95,8 @@ class Feudal(object):
         pass
 
     def store(self, s, a, r, sprime, aprime, done):
-        self.exp.push(s, a, sum(r), 1 - done, self.temp.goal, self.temp.policy, self.temp.m_value, 
-                    self.temp.w_value_ext, self.temp.w_value_int, self.temp.m_state)
+        self.exp.push(s, a, sum(r), 1 - done, self.temp_second.goal, self.temp_second.policy, self.temp_second.m_value, 
+                    self.temp_second.w_value_ext, self.temp_second.w_value_int, self.temp_second.m_state)
 
     def reset(self):
         m_hx                = torch.zeros(1, self.d).to(device)
@@ -116,6 +108,7 @@ class Feudal(object):
         self.w_lstm         = (w_hx, w_cx)
 
         self.goals_horizon  = torch.zeros(1, self.horizon + 1, self.d).to(device)
+        self.temp_first, self.temp_second = (None, None)
         return 
 
     def get_grad_norm(self, model):
@@ -195,7 +188,7 @@ class Feudal(object):
             loss = w_loss + w_loss_value_ext + w_loss_value_int + m_loss + m_loss_value
 
             self.optimizer.zero_grad()
-            loss.backward(retain_graph=True)
+            loss.backward(retain_graph=False) # TODO: This was changed? Maybe back to true
             torch.nn.utils.clip_grad_norm_(self.net.parameters(), self.clip_grad_norm)
             self.optimizer.step()
 
@@ -208,8 +201,6 @@ class Feudal(object):
             self.totalSteps += 1
 
             self.valueLoss.append(loss)
-            print('Loss: ', loss)
-            print('')
 
             return loss
 

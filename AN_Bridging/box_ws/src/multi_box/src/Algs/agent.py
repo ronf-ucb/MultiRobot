@@ -9,6 +9,7 @@ from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
 import vrep
 import matplotlib.pyplot as plt
+from collections import OrderedDict
 
 from Networks.network import Network
 
@@ -20,7 +21,7 @@ class Agent(object):
         self.vTrain = params['valTrain']
         self.agents = params['agents']
         rospy.Subscriber("/finished", Int8, self.receiveDone, queue_size = 1)
-        self.pubs = {}
+        self.pubs = OrderedDict()
         for key in self.agents.keys():
             bot = self.agents[key]
             self.pubs[key] = rospy.Publisher(bot['pub'], Vector3, queue_size = 1)

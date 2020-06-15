@@ -18,7 +18,7 @@ class MoveTask(Task):
         super(MoveTask, self).__init__(action)
 
         self.prev = {"S": None, "A": None}
-        self.actionMap = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6:(0,0)}
+        self.actionMap = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
         self.restart = rospy.Publisher('/restart', Int8, queue_size = 1)
         rospy.Subscriber('/restart', Int8, self.restartCall, queue_size = 1)
    

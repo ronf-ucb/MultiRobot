@@ -14,6 +14,7 @@ from Networks.network import Network
 from agent import Agent
 from Networks.dualNetwork import DualNetwork
 from utils import positiveWeightSampling
+from Buffers.CounterFactualBuffer import Memory
 
 '''Double DQN with priority sampling based on TD error. Possible to have dual networks for advantage and value'''
 
@@ -21,7 +22,6 @@ class DoubleQ(Agent):
     def __init__(self, params, name, task):
         super(DoubleQ, self).__init__(params, name, task)
         self.dual = self.vPars['dual']
-        self.actionMap = {0: (-3,-2), 1:(-2,-3), 2:(-3,-3), 3:(2,3), 4:(3,3), 5:(3,2)}
         if self.trainMode:
             if self.dual:
                 self.tarNet = DualNetwork(self.vPars, self.vTrain)
@@ -32,18 +32,13 @@ class DoubleQ(Agent):
         else:
             self.valueNet.load_state_dict(torch.load("/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNetwork.txt"))
 
-        self.base = self.vTrain['baseExplore']
-        self.decay = self.vTrain['decay']
-        self.step = self.vTrain['step']
         self.expSize =self.vTrain['buffer']
-        self.exp = Replay(self.expSize)
+        self.out_n = self.vPars['neurons'][-1]
+        self.exp = Memory()
         self.double = self.vTrain['double']
-        self.priority = self.vTrain['prioritySample']
-        self.a = self.vTrain['a']
         self.replaceCounter = 0
         self.valueLoss = []
         self.avgLoss = 0
-        self.lrStep = 0
 
         task.initAgent(self)
     
@@ -52,63 +47,45 @@ class DoubleQ(Agent):
         task.postTraining()
 
     def saveModel(self):
-        #torch.save(self.valueNet.state_dict(), "/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/QNet_box.txt")
-        #print("Network saved")
         pass
     
-    def get_action(self):
-        q = self.valueNet(s)
+    def store(self, s, a, r, sprime, aprime, done):
+        self.exp.push(s, a, r, 1-done, aprime, sprime)
+    
+    def get_action(self, s):
+        q = self.valueNet(torch.FloatTensor(s))
         i = np.random.random()
         if i < self.explore:
             index = np.random.randint(self.out_n)
-            #print('random')
         else:
             q = q.detach().numpy()
             index = np.argmax(q)
-            #print('determ')
-        # print(self.actionMap[index])
-        msg.x, msg.y = self.actionMap[index]
-        action = np.array([index])  
-        return self.actionMap[index], index
+        self.explore = max(.1, self.explore * .999)
+        return index
 
     def train(self):
-        self.totalSteps += 1
-        states, actions, rewards, nextStates, dummy, dummy2 = self.exp.get_data()
+        if len(self.exp) > self.batch_size:
+            states, actions, rewards, masks, _ , nextStates, _,_,_ = self.exp.sample(batch = self.batch_size)
 
-        if self.replaceCounter % 200 == 0:
-            self.tarNet.load_state_dict(self.valueNet.state_dict())
-            self.replaceCounter = 0
-        self.replaceCounter += 1
-        #PREPROCESS AND POSTPROCESS SINCE WE ARE USING PREDICT TO SEND ACTIONS
-        qValues = self.valueNet(torch.FloatTensor(states)) #pass in. Processing implied
-        q = torch.gather(qValues, 1, torch.LongTensor(actions)) #get q values of actions  
-        qnext = self.tarNet(torch.FloatTensor(nextStates)).detach() #pass in
+            if self.replaceCounter % 200 == 0:
+                self.tarNet.load_state_dict(self.valueNet.state_dict())
+                self.replaceCounter = 0
 
-        if self.double: 
-            qnextDouble = self.valueNet(torch.FloatTensor(nextStates)).detach() #pass in
-            qnext = torch.gather(qnext, 1, torch.LongTensor(qnextDouble.argmax(1).view(-1, 1)))
-            qtar = torch.FloatTensor(rewards) + self.discount * qnext 
-        else:
-            qtar = torch.FloatTensor(rewards) + self.discount * qnext.max(1)[0].view(self.batch_size, 1) #calculate target
+            qValues = self.valueNet(torch.FloatTensor(states)).squeeze(1) #pass in. Processing implied
+            q = torch.gather(qValues, 1, torch.LongTensor(actions).unsqueeze(1)) #get q values of actions  
+            qnext = self.tarNet(torch.FloatTensor(nextStates)).squeeze(1).detach() #pass in
 
-        if self.priority:
-            qcopy = q.clone()
-            delta = np.abs((qtar - qcopy.detach()).numpy())
-            delta = delta + 1e-8*np.ones(delta.shape)
-            choices = np.random.choice(min(self.dataSize, self.expSize) , self.batch_size, positiveWeightSampling(delta, self.a))
-        else:
-            choices = np.random.choice(min(self.dataSize, self.expSize), self.batch_size) 
+            if self.double: 
+                qnextDouble = self.valueNet(torch.FloatTensor(nextStates)).squeeze(1).detach() #pass in
+                qnext = torch.gather(qnext, 1, torch.LongTensor(qnextDouble.argmax(1).unsqueeze(1)))
+                qtar = torch.FloatTensor(rewards).squeeze(1) + self.discount * torch.Tensor(masks).unsqueeze(1) * qnext
+            else:
+                qtar = torch.FloatTensor(rewards) + self.discount * torch.Tensor(masks).unsqueeze(1) * qnext.max(1)[0].view(self.batch_size, 1) #calculate target
 
-        q = q[choices]
-        qtar = qtar[choices]
-
-        loss = self.valueNet.loss_fnc(q, qtar)
-        self.valueNet.optimizer.zero_grad()
-        loss.backward()
-        self.valueNet.optimizer.step()
-        self.avgLoss += loss
-        self.trainIt += 1
-        self.lrStep += 1
-        if self.lrStep % self.step == 0:
-            self.explore = (self.explore - self.base)*self.decay + self.base
-            print(" ############# NEW EPSILON: ", self.explore, " ################")
+            loss = self.valueNet.get_loss(q, qtar)
+            self.valueNet.optimizer.zero_grad()
+            loss.backward()
+            self.valueNet.optimizer.step()
+            self.avgLoss += loss
+            self.replaceCounter += 1
+            self.totalSteps += 1

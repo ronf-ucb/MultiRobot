@@ -23,18 +23,17 @@ class Manager():
             print("Episode Number ", counter + 1)
             r = 1 
             if not first:
-                time.sleep(1)
+                time.sleep(5)
                 while r != 0:
                     r = vrep.simxStartSimulation(clientID, vrep.simx_opmode_oneshot)
-            #print('Started Simulation! ### ')
             start = time.time()
+            time.sleep(1)
             self.restart = False
             elapsed = 0
             while(not self.restart and elapsed < maxTime):
                 curr = time.time()
                 elapsed = curr - start
             vrep.simxStopSimulation(clientID,vrep.simx_opmode_blocking)
-            #print('Stopped Simulation! ###')
             if not self.restart: #timed out!
                 msg = Int8()
                 msg.data = 2
@@ -42,7 +41,7 @@ class Manager():
             is_running = True
             while is_running:
                 error_code, ping_time = vrep.simxGetPingTime(clientID)
-                error_code, server_state = vrep.simxGetInMessageInfo(clientID, vrep.simx_headeroffset_server_state);
+                error_code, server_state = vrep.simxGetInMessageInfo(clientID, vrep.simx_headeroffset_server_state)
                 is_running = server_state & 1
             counter += 1
             first = False
@@ -56,8 +55,8 @@ class Manager():
             self.restart = True 
         return
 
-episodes = 50
-maxTime =  60
+episodes = 500
+maxTime =  80
 
 
 if __name__ == "__main__":

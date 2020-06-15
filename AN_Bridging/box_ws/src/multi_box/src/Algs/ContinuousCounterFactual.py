@@ -57,7 +57,7 @@ class CounterContinuous(object):
             self.actor      = [SoftNetwork(self.aPars, self.aTrain) for i in range(len(self.agents))]
 
         for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
-            target_param.data.copy_(param)
+            target_param.data.copy_(param.data)
 
         self.clip_grad_norm = self.aTrain['clip']
         self.trainMode      = self.vPars['trainMode']
@@ -66,7 +66,9 @@ class CounterContinuous(object):
         self.range          = self.aPars['mean_range']
         self.td_lambda      = .8
         self.tau            = .005
+        self.lower_bound    = self.aTrain['clamp'][2]
         self.stop           = False
+        self.trained        = False
 
         self.exp            = Memory() 
 
@@ -94,11 +96,8 @@ class CounterContinuous(object):
         else: # TODO: Fix this below:
             a1, h_new1, log_prob1, mu1, std1 = self.actor[0](torch.FloatTensor(s_split[0]), self.h[0])
             a2, h_new2, log_prob2, mu2, std2 = self.actor[1](torch.FloatTensor(s_split[1]), self.h[1])
-        # self.temp_second = self.temp_first 
-        # self.temp_first = Temp([log_prob1, log_prob2], [mu1, mu2], [log_std1, log_std2])
-        # self.h = [h_new1, h_new2]
         action = [a1.detach().numpy().ravel(), a2.detach().numpy().ravel()]
-        return np.array(action), [a1, a2]
+        return [a1, a2]
 
     def choose(self, policies):
         m = Categorical(policies)
@@ -110,10 +109,15 @@ class CounterContinuous(object):
     def saveModel(self):
         pass
 
-    def store(self, s, a, r, sprime, aprime, done, s_w):
-        self.exp.push(s, a, r, 1 - done, aprime, sprime, s_w)
+    def store(self, s, a, r, sprime, aprime, done, local, next_local):
+        self.exp.push(s, a, r, 1 - done, aprime, sprime, local, next_local)
 
     def reset(self):
+        curr = self.actor.clamp[0]
+        if self.trained:
+            new = max(self.lower_bound, .05 * self.lower_bound + .95*curr)
+            self.actor.clamp = (new, self.actor.clamp[1], self.lower_bound)
+        self.trained = False
         return 
 
     def get_grad_norm(self, model):
@@ -132,7 +136,7 @@ class CounterContinuous(object):
         ret[-1] = target_qs[-1] * mask[-1]
 
 
-        for t in range(ret.size()[0] - 2, -1,  -1): #TODO: check that the mask is applied correctly
+        for t in range(ret.size()[0] - 2, -1,  -1): 
             ret[t] = self.td_lambda * gamma * ret[t + 1] + \
                 mask[t] * (rewards[t] + (1 - self.td_lambda) * gamma * target_qs[t + 1])
         return ret.unsqueeze(1)
@@ -149,23 +153,21 @@ class CounterContinuous(object):
 
 
     def train(self, episode_done = False):
-        if len(self.exp) >= 750:
+        if len(self.exp) >= 500:
 
             transition = self.exp.sample(self.batch_size)
             states = torch.squeeze(torch.Tensor(transition.state)).to(device)
-            states_next = torch.squeeze(torch.Tensor(transition.next_state)).to(device) 
             actions = self.zipStack(transition.action)
-            actions_next = self.zipStack(transition.next_action)
             rewards = torch.Tensor(transition.reward).to(device)
+            states_next = torch.squeeze(torch.Tensor(transition.next_state)).to(device) 
             masks = torch.Tensor(transition.mask).to(device)
             local = self.zipStack(transition.local)
+            next_local = self.zipStack(transition.next_local)
 
             actions_next = []
-            new_lps = []
-            for s in local:
+            for s in next_local:
                 a, log_prob, _, _, _ = self.actor(s)
                 actions_next.append(a.detach())
-                new_lps.append(log_prob)
             inp = torch.cat((states_next, actions_next[0], actions_next[1]), dim = 1)
             q_tar = rewards.unsqueeze(1) + self.discount * masks.unsqueeze(1) * self.target(inp)
             inp = torch.cat((states, actions[0].detach(), actions[1].detach()), dim = 1)
@@ -206,7 +208,7 @@ class CounterContinuous(object):
             # train second agent
             inp = torch.cat((states, actions[0].detach(), actions[1]), dim = 1)
             q_out = self.critic(inp)
-            samples = self.monte_carlo(means[1], log_stds[1])
+            samples = self.monte_carlo(means[1], log_stds[1].exp())
             samples = self.range * torch.tanh(samples)
             repeat_a = actions[0].unsqueeze(0)
             repeat_a = repeat_a.expand(samples.size()[0], repeat_a.size()[1], repeat_a.size()[2])
@@ -227,10 +229,12 @@ class CounterContinuous(object):
                     torch.nn.utils.clip_grad_norm_(actor.parameters(), self.clip_grad_norm)
                     actor.optimizer.step()    
             self.totalSteps += 1
+            self.trained = True
 
             #UPDATE TARGET NETWORK:
-            for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
-                target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
+            if self.totalSteps % 50 == 0:
+                for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
+                    target_param.data.copy_(param.data)
             return 
 
 class CounterActor(nn.Module):

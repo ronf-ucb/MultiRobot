@@ -10,12 +10,13 @@ from std_msgs.msg import String, Int8
 from geometry_msgs. msg import Vector3
 from collections import OrderedDict
 
-from Algs.QSARSA import CentralQSarsa
+'''from Algs.QSARSA import CentralQSarsa
 from Algs.doubleQ import DoubleQ
 from Algs.trpo import TRPOAgent
 from Algs.TD3 import Twin_DDPG
-from Algs.SoftActorCritic import SAC
+from Algs.SoftActorCritic import SAC'''
 from Algs.FuN import Feudal
+from Algs.HIRO import HIRO
 from Tasks.boxTask import BoxTask
 
 NAME = 'bot'
@@ -26,9 +27,10 @@ algs = {
     5: "CENTRAL_TRPO",
     6: "CENTRAL_DDPG",
     7: 'SAC',
-    8: 'FEUDAL'
+    8: 'FEUDAL',
+    9: 'HIRO'
 }
-ALGORITHM = 8
+ALGORITHM = 9
 description = algs[ALGORITHM]
 rospy.init_node('Dummy', anonymous = True)
 
@@ -51,22 +53,12 @@ if description == "CENTRAL_Q":
     valTrain = {
                 'batch':        128, 
                 'lr':           3e-4, 
-                'w_phase1':     1,
-                'w_phase2':     1, 
-                'w_phase3':     1,
-                'buffer':       10000,
-                'explore':      False,
                 'gamma':        .99,
                 'explore': .4, 
-                'baseExplore': .1,
-                'decay': .6,
-                'step': 50,
                 'double': True,
-                'prioritySample': True,
-                'a': 1
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "agents": agents}
-    tanker = CentralQ(params, NAME, BoxTask("argmax"))
+    tanker = CentralQ(params, NAME, BoxTask())
 
 if description == "CENTRAL_Q_SARSA":
 
@@ -266,7 +258,7 @@ if description == 'FEUDAL':
                 'alpha':        .1,
             }
     fun   = {
-                's':            13,
+                's':            12,
                 'u':            8,
                 'c':            9,
                 'k':            16,
@@ -275,6 +267,60 @@ if description == 'FEUDAL':
     params = {"agents": agents, 'train': train, 'fun': fun}
     agent = Feudal(params, NAME, BoxTask())
 
+if description == 'HIRO':
+    agents = OrderedDict({
+                #ensure ordering matches ros messages
+                "bot":          {"sub": "/state", "pub": "/action"} #joint action space
+            })
+    valPars = {
+                'neurons':      (14, 256, 256, 1),
+                'act':          ['F.leaky_relu','F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(14)]),
+                'std':          torch.Tensor([1 for i in range(14)]),
+                'trainMode':    True,
+                'load':         False,
+                'tau':          .005
+                }        
+    valTrain = {
+                'batch':        128, 
+                'lr':           3e-4, 
+                'w_phase1':     1,
+                'w_phase2':     1, 
+                'w_phase3':     1,
+                'buffer':       10000,
+                'explore':      False,
+                'm_gamma':      .99,
+                'w_gamma':      .8,
+                'step':         32,
+                }
+    managerPars = {
+                'neurons':      (12, 256, 256, 2),
+                'act':          ['F.leaky_relu','F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(12)]),
+                'std':          torch.Tensor([1 for i in range(12)]),}
+    managerTrain = {
+                'lr':           3e-4,
+                'c':            4}
+    w_vPars = {
+                'neurons':      (8, 256, 256, 8),
+                'act':          ['F.leaky_relu','F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(8)]),
+                'std':          torch.Tensor([1 for i in range(8)]),               }
+    w_vTrain = {
+                    'lr':       3e-4}
+    actPars = {
+                'neurons':      (8, 256, 256, 8),
+                'act':          ['F.leaky_relu','F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(8)]),
+                'std':          torch.Tensor([1 for i in range(8)]),
+            }
+    actTrain = { 
+                'lr':           3e-4, }
+    params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, 
+              "actTrain": actTrain, 'mPars': managerPars, 'mTrain': managerTrain, 
+              "w_vPars": w_vPars, "w_vTrain": w_vTrain, "agents": agents}
+    tanker = HIRO(params, NAME, BoxTask())
+    
 
 while(True):
     x = 1+1

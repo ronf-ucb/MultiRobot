@@ -15,8 +15,8 @@ from Algs.CounterFeudal import CounterFeudal
 from Algs.ContinuousCounterFactual import CounterContinuous
 from Tasks.boxDoubleTask import BoxDoubleTask
 
-NAME = 'bot'
-NAMETWO = 'bot2'
+NAME = 'a_bot'
+NAMETWO = 'b_bot'
 
 algs = {
     10: "COUNTER",
@@ -29,30 +29,30 @@ rospy.init_node('Dummy', anonymous = True)
 
 if description == "COUNTER":
     agents = OrderedDict({
-                #ensure ordering matches ros messages
-                "bot": {"sub": "/state", "pub": "/action1"}, #joint action space
-                "bot2": {"sub": "/state", "pub": "/action2"}
+                #ensure ordering matches ros message
+                "a_bot": {"sub": "/state", "pub": "/action1"}, #joint action space
             })
+    agents["b_bot"] = {"sub": "/state", "pub": "/action2"}
 
     actPars = {
                 #define hidden state size and input state size...
                 'h_state_n':    256,
-                'x_state_n':    15, #6 robot, 6 box, 3 observation
-                'u_n':          9,
-                'mu':           torch.Tensor([0 for i in range(15)]),
-                'std':          torch.Tensor([1 for i in range(15)]),
+                'x_state_n':    11, #4 robot, 4 box, 3 observation
+                'u_n':          6,
+                'mu':           torch.Tensor([0 for i in range(11)]),
+                'std':          torch.Tensor([1 for i in range(11)]),
                 'share_params': True
             }
     actTrain = { 
-                'lr':           3e-4, 
+                'lr':           5e-4, # this is what they used in the paper...but they used RMSProp not Adam
                 'clip':         1
                 }
 
     valPars = {
-                'neurons':      (20, 256, 256, actPars['u_n']), #true state: 18, actions other: 1, agent index: 1 
+                'neurons':      (14, 256, 256, actPars['u_n']), #true state: 12, actions other: 1, ID
                 'act':          ['F.leaky_relu','F.leaky_relu'],
-                'mu':           torch.Tensor([0 for i in range(20)]),
-                'std':          torch.Tensor([1 for i in range(20)]),
+                'mu':           torch.Tensor([0 for i in range(14)]),
+                'std':          torch.Tensor([1 for i in range(14)]),
                 'trainMode':    True,
                 'load':         False,
                 }        
@@ -61,9 +61,9 @@ if description == "COUNTER":
                 'w_phase1':     1,
                 'w_phase2':     1, 
                 'w_phase3':     1,
-                'buffer':       10000,
+                'buffer':       5000,
                 'gamma':        .99,
-                'batch':        16,
+                'batch':        32,
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
     tanker = Counter(params, NAME, BoxDoubleTask())
@@ -71,51 +71,41 @@ if description == "COUNTER":
 if description == "COUNTER_FEUDAL":
 
     agents = OrderedDict({
-                #ensure ordering matches ros messages
-                "bot": {"sub": "/state", "pub": "/action1"}, #joint action space
-                "bot2": {"sub": "/state", "pub": "/action2"}
+                #ensure ordering matches ros message
+                "a_bot": {"sub": "/state", "pub": "/action1"}, #joint action space
             })
-    mPars = {
-                'neurons':      (18, 256, 256, 1),
-                'act':          ['F.leaky_relu', 'F.leaky_relu'],
+    agents["b_bot"] = {"sub": "/state", "pub": "/action2"}
 
-                # actor parameters
-                # latent space
-                'width':        256,
-                'x_state_n':    18, # true state...calculate advantage function
-                'mu':           torch.Tensor([0 for i in range(18)]),
-                'std':          torch.Tensor([1 for i in range(18)]),
+    mPars = {
+                'neurons':      (15, 256, 256, 2),
+                'act':          ['F.leaky_relu', 'F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(15)]),
+                'std':          torch.Tensor([1 for i in range(15)]),
                 'c':            2,
-            }
+    }
     mTrain = {
                 'lr':           3e-4,
                 'gamma':        .99
             }
     
     actPars = {
-                # hidden state
-                'h_state_n':    256,
-                'x_state_n':    15, # 6 robot, 6 box, 3 others
-                'u_n':          8, # number of actions 
-                'k':            16,
-                'embedding':    mPars['x_state_n'],
-                'mu':           torch.Tensor([0 for i in range(15)]),
-                'std':          torch.Tensor([1 for i in range(15)]),
+                'neurons':      (8, 256, 256, 2), # 6 state, 3 others, 2 goal
+                'act':          ['F.leaky_relu', 'F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(8)]),
+                'std':          torch.Tensor([1 for i in range(8)]),
             }
     actTrain = { 
                 'lr':           3e-4, 
-                'clip':         1
                 }
 
     valPars = { # counterfactual network
-                'neurons':      (20, 256, 256, 8), # Input: true_state = 8, actions = 2*1  Output: 8 actions
+                'neurons':      (22, 256, 256, 1), # Input: true_state = 18, actions = 2*2  Output: 1
                 'act':          ['F.leaky_relu','F.leaky_relu'],
-                'mu':           torch.Tensor([0 for i in range(20)]),
-                'std':          torch.Tensor([1 for i in range(20)]),
+                'mu':           torch.Tensor([0 for i in range(22)]),
+                'std':          torch.Tensor([1 for i in range(22)]),
                 'trainMode':    True,
                 'load':         False,
                 'tau':          .005,
-                'int_weight':   .2,
                 }        
     valTrain = {
                 'lr':           3e-4, 
@@ -124,19 +114,29 @@ if description == "COUNTER_FEUDAL":
                 'w_phase3':     1,
                 'buffer':       10000,
                 'gamma':        .99,
-                'step':         8,
+                'batch':        5,
                 }
     
+    localPars = { # counterfactual network
+                'neurons':      (8, 256, 256, 1), # Input: state = 6, Others: 3, 2 goal, Output: 1
+                'act':          ['F.leaky_relu','F.leaky_relu'],
+                'mu':           torch.Tensor([0 for i in range(8)]),
+                'std':          torch.Tensor([1 for i in range(8)]),
+                }   
+    localTrain = {
+                'lr':           3e-4
+                }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, 
-            "m_pars": mPars, "m_train": mTrain, "agents": agents}
+            "m_pars": mPars, "m_train": mTrain, 'local_pars': localPars, 'local_train': localTrain,"agents": agents}
     tanker = CounterFeudal(params, NAME, BoxDoubleTask())
 
 if description == "COUNTER_CONT":
     agents = OrderedDict({
-                #ensure ordering matches ros messages
-                "bot": {"sub": "/state", "pub": "/action1"}, #joint action space
-                "bot2": {"sub": "/state", "pub": "/action2"}
+                #ensure ordering matches ros message
+                "a_bot": {"sub": "/state", "pub": "/action1"}, #joint action space
             })
+    agents["b_bot"] = {"sub": "/state", "pub": "/action2"}
+
 
     actPars = {
                 'neurons':      (15, 256, 256, 2),
@@ -153,7 +153,7 @@ if description == "COUNTER_CONT":
     actTrain = { 
                 'lr':           3e-4, 
                 'clip':         1,
-                'clamp':        [-20, .5],
+                'clamp':        [0, 1, -2.5], # starting lower bound, upper bound, ending lower bound
                 }
 
     valPars = {
@@ -171,7 +171,7 @@ if description == "COUNTER_CONT":
                 'w_phase3':     1,
                 'buffer':       10000,
                 'gamma':        .99,
-                'batch_size':   256,
+                'batch_size':   2,
                 }
     params = {"valPars": valPars, "valTrain": valTrain, "actPars": actPars, "actTrain": actTrain, "agents": agents}
     tanker = CounterContinuous(params, NAME, BoxDoubleTask())

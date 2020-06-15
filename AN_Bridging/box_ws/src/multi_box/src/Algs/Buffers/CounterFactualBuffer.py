@@ -5,18 +5,16 @@ import numpy as np
 # Taken from
 # https://github.com/pytorch/tutorials/blob/master/Reinforcement%20(Q-)Learning%20with%20PyTorch.ipynb
 
-Transition = namedtuple('Transition',
-                        ('state','action', 'reward',
-                         'mask', 'next_action', 'next_state', 'local'))
+Transition = namedtuple('Transition',('state','action', 'reward','mask', 'next_action', 'next_state', 'local', 'next_local', 'policies'))
 
 class Memory(object):
     def __init__(self):
         self.memory = []
         self.position = 0
 
-    def push(self, state, action, reward, mask, next_action, next_state, local):
+    def push(self, state, action, reward, mask, next_action, next_state, local=None, next_local=None, policies=None):
         """Saves a transition."""
-        self.memory.append(Transition(state, action, reward, mask, next_action, next_state, local))
+        self.memory.append(Transition(state, action, reward, mask, next_action, next_state, local, next_local, policies))
 
     def sample(self, batch = 0):
         # Sample contiguous 
@@ -25,6 +23,8 @@ class Memory(object):
             return transitions
         
         # Sample randoly
+        #probs = np.arange(1, len(self.memory) + 1)
+        #p = np.true_divide(probs, probs.sum())
         c = np.random.choice(len(self.memory), batch)
         mem = map(self.memory.__getitem__, c)
         transitions = Transition(*zip(*mem))

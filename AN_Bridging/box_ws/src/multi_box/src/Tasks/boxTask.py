@@ -14,7 +14,8 @@ from matplotlib import pyplot as plt
 class BoxTask(Task):
     def __init__(self):
         super(BoxTask, self).__init__()
-
+        self.actionMap = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
+        self.discrete = True
         self.prev = {"S": None, "A": None}
         self.s_n = 12
         self.currReward = 0
@@ -24,7 +25,6 @@ class BoxTask(Task):
     def extractInfo(self):
         self.vTrain = self.agent.vTrain
         self.pubs = self.agent.pubs
-        self.actions = self.agent.actions
         self.trainMode = self.agent.trainMode
         self.name = self.agent.name
         self.w_phase1 = self.vTrain['w_phase1']
@@ -34,7 +34,11 @@ class BoxTask(Task):
  
     def sendAction(self, s):
         msg = Vector3()
-        action, ret = self.agent.get_action(s)
+        ret = self.agent.get_action(s)
+        if self.discrete:
+            action = self.actionMap[ret]
+        else:
+            action = ret
         msg.x, msg.y = (action[0], action[1])
         self.pubs[self.name].publish(msg)
         return ret
@@ -43,12 +47,9 @@ class BoxTask(Task):
         if pos[-1] < .35:
             return (-3, 1)
         if phase == 1:
-            if abs(pos[0] - blockPos[0]) < .7 and abs(pos[1] - blockPos[1]) < .5 and abs(ori - blockOri) < .5:
-                return (5, 0)
-        if phase == 2:
             if blockPos[2] < .3:
                 return (5, 0)
-        if phase == 3:
+        if phase == 2:
             if pos[0] > .75:
                 return (5, 1)
         return (0,0)
@@ -58,9 +59,7 @@ class BoxTask(Task):
         if phase == 1:
             dist_r = (dist(prevPos, blockPos) - dist(pos, blockPos))
 
-            #TEST 
-            #dist_r = pos[0] - prevPos[0]
-    
+            block_r = blockPos[0] - prevBlock[0]
             prevVec = unitVector(vector(prevOri))
             vec = unitVector(vector(ori))
             goal = unitVector(blockPos[:2]-pos[:2])
@@ -69,36 +68,34 @@ class BoxTask(Task):
             currDot = dot(vec, goal)
             ori_r = currDot - prevDot
 
-            #TEST
-            #ori_r = abs(prevOri) - abs(ori)
-
-            return ((dist_r + 2*ori_r) * self.w_phase1, 0)
-
+            return ((block_r + dist_r + 2*ori_r) * self.w_phase1 - .01, 0)
 
         if phase == 2:
-            block_r = blockPos[0] - prevBlock[0]
-            rob_r = pos[0] - prevPos[0]
-            dist_r = .5*(dist(prevPos, blockPos) - dist(pos, blockPos))
-            
-            return ((block_r + rob_r + dist_r) * self.w_phase2, 0)
-
-        if phase == 3:
             goal = np.array([.80, blockPos[1], pos[2]])
             delta = dist(pos, goal)
             prevDelta = dist(prevPos, goal)
             dist_r = prevDelta - delta
             y_r = -abs(blockPos[1]-pos[1])
 
-            return ((dist_r  + .15*y_r - .05 * abs(ori)) * self.w_phase3, 0)
+            return ((dist_r  + .15*y_r - .05 * abs(ori)) * self.w_phase3 - .01, 0)
 
-    def unpack(self, prevS, s):
-        prevPos = np.array(prevS[:3])
-        pos = np.array(s[:3])
-        blockPos = np.array(s[6:9])
-        prevBlock = np.array(prevS[6:9])
-        ori = s[5]
-        prevOri = prevS[5]
-        blockOri = s[11]
+    def unpack(self, prevS, s, double = False):
+        if double:
+            prevPos = np.array(prevS[:3])
+            pos = np.array(s[:3])
+            blockPos = np.array(s[4:7])
+            prevBlock = np.array(prevS[4:7])
+            ori = s[3]
+            prevOri = prevS[3]
+            blockOri = s[7]
+        else:
+            prevPos = np.array(prevS[:3])
+            pos = np.array(s[:3])
+            blockPos = np.array(s[6:9])
+            prevBlock = np.array(prevS[6:9])
+            ori = s[5]
+            prevOri = prevS[5]
+            blockOri = s[11]
         return prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri
 
     def rewardFunction(self, s, a):
@@ -117,16 +114,11 @@ class BoxTask(Task):
         restart = 0
         floats = floats[:self.s_n]
 
-        if self.phase == 1:
-            floats.append(0)
-        else:
-            floats.append(1)
-
         s = (np.array(floats)).reshape(1,-1)
         a = (self.sendAction(s))
 
         if type(self.prev["S"]) == np.ndarray:
-            r, restart = self.rewardFunction(s,a)
+            r, restart = self.rewardFunction(s,self.prev['A'])
             if r == 5:
                 print(" #### Phase ", self.phase, "  Complete!")
                 self.phase += 1

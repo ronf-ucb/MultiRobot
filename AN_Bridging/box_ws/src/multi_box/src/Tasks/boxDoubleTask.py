@@ -3,6 +3,7 @@
 #! /usr/bin/env python
 
 from task import Task 
+from task import Task, unitVector, dot, vector
 from task import distance as dist
 import numpy as np 
 import torch 
@@ -20,7 +21,9 @@ Info = namedtuple('Info',('prevPos', 'pos', 'blockPos', 'prevBlock', 'ori', 'pre
 class BoxDoubleTask(BoxTask):
     def __init__(self):
         super(BoxDoubleTask, self).__init__()
-        self.s_n = 18 #TODO: check this dimension
+        self.s_n = 12 #TODO: check this dimension
+        self.actionMap = {0: (-3,-1), 1:(-1,-3), 2:(-3,-3), 3:(1,3), 4:(3,3), 5:(3,1), 6: (-2, 2), 7: (2, -2)} 
+        self.discrete = True
 
 
     def extractInfo(self):
@@ -37,7 +40,11 @@ class BoxDoubleTask(BoxTask):
     def sendAction(self, s, w_s):
         #pass in the local state of agent and its name according to self.agents
         msg = Vector3()
-        action, ret = self.agent.get_action(s, w_s)
+        ret = self.agent.get_action(s, w_s)
+        if self.discrete:
+            action = [self.actionMap[r] for r in ret]
+        else:
+            action = ret
         for (i, key) in enumerate(self.pubs.keys()):
             msg.x, msg.y = (action[i][0], action[i][1])
             self.pubs[key].publish(msg)
@@ -47,29 +54,41 @@ class BoxDoubleTask(BoxTask):
         first, second = self.splitState(s_n.ravel().tolist())
         fPrev, sPrev  = self.splitState(self.prev['S'].ravel().tolist())
         
-        prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(fPrev, first)
+        prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(fPrev, first, double=True)
         first = Info(prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri)
 
-        prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(sPrev, second)
+        prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(sPrev, second, double=True)
         second = Info(prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri)
 
-        if first.pos[2] < .35 or second.pos[2] < .35:
-            return (-3, 1)
         if self.phase == 1:
+            if first.pos[2] < .35 or second.pos[2] < .35:
+                return (-8, 1)
             if blockPos[-1] < .3:
                 self.phase += 1
                 return (5, 0)
-            box_r = (blockPos[0] - prevBlock[0]) - .00625*(abs(blockOri))  
-
+            box_r = (blockPos[0] - prevBlock[0]) - .005*(abs(blockOri))  
 
             vel_r = dist(first.prevPos, prevBlock) - dist(first.pos, blockPos)
-            vel_r += dist(second.prevPos, prevBlock) - dist(second.prevPos, blockPos)
+            vel_r += dist(second.prevPos, prevBlock) - dist(second.pos, blockPos)
 
-            ori_r = abs(blockOri - first.ori)
-            ori_r += abs(blockOri - second.ori)
+            prevVec = unitVector(vector(first.prevOri))
+            vec = unitVector(vector(first.ori))
+            goal = unitVector(blockPos[:2]-first.pos[:2])
+            prevDot = dot(prevVec, goal)
+            currDot = dot(vec, goal)
+            ori_r = currDot - prevDot
 
-            r = 8*box_r + 2*vel_r - .08*ori_r - .005 #subtract constant to encourage efficiency
+            prevVec = unitVector(vector(second.prevOri))
+            vec = unitVector(vector(second.ori))
+            goal = unitVector(blockPos[:2]-second.pos[:2])
+            prevDot = dot(prevVec, goal)
+            currDot = dot(vec, goal)
+            ori_r += currDot - prevDot
+
+            r = (25*box_r + vel_r + 2*ori_r) - .01
         if self.phase == 2:
+            if first.pos[2] < .35 or second.pos[2] < .35:
+                return (-6, 1)
             if first.pos[0] > .45 and second.pos[0] > .45:
                 print('Success!')
                 return (5, 1)
@@ -81,18 +100,18 @@ class BoxDoubleTask(BoxTask):
 
             #ori_r = .05* (abs(first.ori) + abs(second.ori))
 
-            r = vel_r - y_r - .005 #subtract constant to encourae efficiency
+            r = vel_r - y_r - .01
         return (r, 0)
 
     
     def splitState(self, s):
-        box = np.array(s[6:12])
-        first = np.array(s[:12])
-        second = np.array(s[12:18] + s[6:12])
+        box = np.round(np.array(s[4:8]), decimals = 2)
+        first = np.round(np.array(s[:8]), decimals = 2)
+        second = np.round(np.array(s[8:12] + s[4:8]), decimals=2)
         
         #append relative information to include observations for each local state
-        first = np.hstack((first, second[:2] - first[:2], second[5:6]))
-        second = np.hstack((second, first[:2] - second[:2], first[5:6]))
+        first = np.hstack((first, second[:2] - first[:2], second[3:4]))
+        second = np.hstack((second, first[:2] - second[:2], first[3:4]))
 
         return first, second
 
@@ -110,11 +129,12 @@ class BoxDoubleTask(BoxTask):
         second = torch.FloatTensor(second).view(1,-1)
         a = (self.sendAction(s, [first, second]))
         if type(self.prev["S"]) == np.ndarray:
-            r, restart = self.rewardFunction(s, self.prev['A'])   
-            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart, [first, second]) 
+            r, restart = self.rewardFunction(s, self.prev['A']) 
+            self.agent.store(self.prev['S'], self.prev["A"], r, s, a, restart, self.prevLocals, (first, second)) 
             self.currReward += r
         self.prev["S"] = s
         self.prev["A"] = a
+        self.prevLocals = (first, second)
         s = s.ravel()
         if self.trainMode:
             self.agent.train()

@@ -22,6 +22,9 @@ from collections import namedtuple
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 Transition = namedtuple('Transition', ('states', 'actions', 'rewards', 'next_state', 'local','goals'))
 
+# Other considerations:
+#   - Latent space for actor instead of manually reduced space. Use auxiliary reward prediction for feature extraction
+
 
 class CounterFeudal(object):
     def __init__(self, params, name, task):
@@ -33,27 +36,26 @@ class CounterFeudal(object):
         self.aPars          = params['actPars']
         self.m_params       = params['m_pars'] # Manager
         self.m_train        = params['m_train']
+        self.local_vPars    = params['local_pars'] # Local values
+        self.local_vTrain   = params['local_train']
         self.agents         = params['agents'] # Agents
 
         self.pubs = {}
-        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
         for key in self.agents.keys():
             bot             = self.agents[key]
             self.pubs[key]  = rospy.Publisher(bot['pub'], Vector3, queue_size = 1)
         rospy.Subscriber("/finished", Int8, self.receiveDone, queue_size = 1)
 
         self.tau            = self.vPars['tau']
-        self.int_weight     = self.vPars['int_weight']
         self.trainMode      = self.vPars['trainMode']
         self.batch_size     = self.vTrain['batch']
         self.td_lambda      = .8
 
-        self.h_state_n      = self.aPars['u_n'] * self.aPars['k']
         self.c              = self.m_params['c']
         self.w_discount     = self.vTrain['gamma']
         self.m_discount     = self.m_train['gamma']
-        self.clip_grad_norm = self.aTrain['clip']
         self.prevState      = None
+        self.soft           = nn.Softmax(dim=1)
 
         self.exp            = Memory()
         self.valueLoss      = []
@@ -63,18 +65,16 @@ class CounterFeudal(object):
         self.goal_temp2     = None
         self.iteration      = 0
         self.totalSteps     = 0
-        self.reward_manager = 0
-        
 
-        self.counter_critic = Network(self.vPars, self.vTrain)
-        self.counter_target = Network(self.vPars, self.vTrain)
-        self.manager = CounterManager(self.m_params, self.m_train) # manager
-        self.actor = CounterActor(self.aPars, self.aTrain) # actor
-        self.critic = CounterCritic(self.local_vPars, self.local_vTrain) 
-        self.target = CounterCritic(self.local_vPars, self.local_vTrain)
+        self.counter_critic, self.counter_target = (Network(self.vPars, self.vTrain), Network(self.vPars, self.vTrain))
+        self.manager = Network(self.m_params, self.m_train) # manager
+        self.actor = Network(self.aPars, self.aTrain) # actor
+        self.critic, self.target = (Network(self.local_vPars, self.local_vTrain), Network(self.local_vPars, self.local_vTrain))
 
         for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
             target_param.data.copy_(param.data)
+        for target_param, param in zip(self.counter_target.parameters(), self.counter_critic.parameters()):
+            target_param.data.copy_(param.data)       
 
         self.reset()
 
@@ -93,22 +93,24 @@ class CounterFeudal(object):
 
     def get_action(self, s_true, s_split):
         if self.iteration % self.c == 0: 
-            self.goal, value = self.manager(torch.FloatTensor(s_true)) # get a new goal
-            self.temp_manager = m_Temp(self.goal, torch.FloatTensor(s_true), value)
+            self.goal = [self.manager(torch.FloatTensor(s)) for s in s_split]
         else: # Use goal transition 
-            self.goal = self.prevState + self.goal - torch.FloatTensor(s_true)
+            self.goal = [torch.FloatTensor(self.prevState[i][:,:2]) + g - torch.FloatTensor(s_split[i][:,:2]) for i, g in enumerate(self.goal)]
 
         self.goal_temp2 = self.goal_temp1 
         self.goal_temp1 = self.goal
 
-        policies = [self.actor(s, self.goal[i]) for i, s in enumerate(s_split)]       
+        policies = []
+        for i, s in enumerate(s_split):
+            inpt = torch.cat((s[:,:6], self.goal[i]), dim=1)
+            policies.append(self.soft(self.actor(inpt)))  
         act_indices = [self.choose(policy) for policy in policies]
         actions = [self.actionMap[index] for index in act_indices]
 
-        self.prevState = torch.FloatTensor(s_true)
+        self.prevState = s_split
         self.iteration += 1
 
-        return np.array(actions), act_indices
+        return act_indices
 
     def choose(self, policies):
         m = Categorical(policies)
@@ -130,8 +132,8 @@ class CounterFeudal(object):
     def reset(self):
         self.train(True)
         self.iteration = 0
-        self.h = [torch.zeros(1, 1, self.h_state_n).to(device) for i in range(len(self.agents))]
-        self.temp_first, self.temp_second = (None, None)
+        self.temp = []
+        self.goal_temp1, self.goal_temp2 = (None, None)
         return 
 
     def zipStack(self, data):
@@ -140,8 +142,10 @@ class CounterFeudal(object):
         return data
 
     def train(self, episode_done = False): 
-        if len(self.worker_exp) > self.batch_size:
+        if len(self.exp) > self.batch_size:
             # UNPACK REPLAY
+            groups = self.exp.sample(self.batch_size)
+            
             # for each agent:
                 # Extract manager samples by: taking first true state, taking first goal, sum rewards, last next state of each group
                 # replace the goal: Sample new goals according to the paper 
@@ -150,6 +154,8 @@ class CounterFeudal(object):
                 # gather all actions according to the replay actions 
                 # multiply probabilities across time
                 # choose the goal index that has highest probability of all and replace each of the groups with the new goal and transition
+            
+            
             # Train counterfactual
                 # Same as continuous counterfactual learning. Use montecarlo for each of the manager transitions 
             
@@ -165,62 +171,6 @@ class CounterFeudal(object):
             # store the groupings back into the replay
             print('yes')
         return 1
-
-
-class CounterManager(nn.Module):
-    def __init__(self, params, train):
-        # define feed forward network here
-        super(CounterManager, self).__init__()
-        self.width      = params['width']
-        self.x_state_n  = params['x_state_n']
-        self.lr         = train['lr']
-        self.mean       = params['mu']
-        self.std        = params['std']
-
-        self.fc1        = nn.Linear(self.x_state_n, self.width)
-        self.fc2        = nn.Linear(self.width, self.width)
-        self.fc3        = nn.Linear(self.width, self.x_state_n)
-
-        self.optimizer  = optim.Adam(super(CounterManager, self).parameters(), lr=self.lr)
-        return
-
-    def preprocess(self, inputs):
-        return (inputs - self.mean) / self.std
-    
-    def forward(self, s_true):
-        inpt = self.preprocess(s_true) 
-        inpt = F.leaky_relu(self.fc1(inpt))
-        out  = F.leaky_relu(self.fc2(inpt))
-        out  = self.fc3(out)
-        out  = out / out.norm().detach()
-        return out
-
-class CounterActor(nn.Module):
-    def __init__(self, params, train):
-        super(CounterActor, self).__init__()
-        self.h_state_n  = params['h_state_n']
-        self.x_state_n  = params['x_state_n']
-        self.u_n        = params['u_n']
-        self.lr         = train['lr']
-        self.mean       = params['mu']
-        self.std        = params['std']
-
-        self.fc1        = nn.Linear(self.x_state_n, self.h_state_n)
-        self.fc2        = nn.Linear(self.h_state_n, self.h_state_n)
-        self.fc3        = nn.Linear(self.h_state_n, self.u_n)
-        self.soft       = nn.Softmax(dim = 1)
-        self.optimizer  = optim.Adam(super(CounterActor, self).parameters(), lr=self.lr)
-
-    def preprocess(self, inputs):
-        return (inputs - self.mean) / self.std
-
-    def forward(self, x):
-        x = self.preprocess(x)
-        inp = F.leaky_relu(self.fc1(x))
-        out = F.leaky_relu(self.fc2(inp))
-        out = self.fc3(out)
-        policy = self.soft(out)
-        return policy
 
     
 

@@ -21,6 +21,8 @@ class BridgeTask(Task):
     def __init__(self):
         super(BridgeTask, self).__init__()
         self.prev = {"S": None, "A": None}
+        self.actionMap        = {0: (-2,-1), 1:(-1,-2), 2:(-2,-2), 3:(1,2), 4:(2,2), 5:(2,1), 6: (-2, 2), 7: (2, -2)} 
+        self.discrete = True
         self.currReward = 0
         self.rewards = []
         self.phase = 1
@@ -37,7 +39,11 @@ class BridgeTask(Task):
     def sendAction(self, s, w_s):
         #pass in the local state of agent and its name according to self.agents
         msg = Vector3()
-        action, ret = self.agent.get_action(s, w_s)
+        ret = self.agent.get_action(s, w_s)
+        if self.discrete:
+            action = [self.actionMap[r] for r in ret]
+        else:
+            action = ret
         for (i, key) in enumerate(self.pubs.keys()):
             msg.x, msg.y, msg.z = (action[i][0], action[i][1], action[i][2])
             self.pubs[key].publish(msg)

@@ -53,8 +53,8 @@ class A2C(Agent):
         action_logstd = output[:, int(out_n/2):]
         action_std = torch.exp(action_logstd)
         action = (torch.normal(action_mean, action_std).detach().numpy()).ravel()
-        return action, action
-        
+        return action
+                
     def train(self):
         if self.dataSize == self.batch_size:
             self.totalSteps += 1    

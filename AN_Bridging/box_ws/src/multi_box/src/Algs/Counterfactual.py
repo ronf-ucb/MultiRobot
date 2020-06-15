@@ -18,7 +18,7 @@ from agent import Agent
 from Networks.network import Network
 from Networks.feudalNetwork import FeudalNetwork
 from Buffers.CounterFactualBuffer import Memory
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,10 +32,7 @@ class Counter(object):
         self.aPars          = params['actPars']
         self.agents         = params['agents']
 
-        self.pubs = {}
-        # THIS IS A TEST
-        self.actionMap      = {0: (-2,-1,-1), 1:(-1,-2,-1), 2:(-2,-2,-1), 3:(1,2,-1), 4:(2,2,-1), 
-                                5:(2,1,-1), 6: (-2, 2, -1), 7: (2, -2, -1), 8:(0,0,-1)}
+        self.pubs = OrderedDict()
         for key in self.agents.keys():
             bot             = self.agents[key]
             self.pubs[key]  = rospy.Publisher(bot['pub'], Vector3, queue_size = 1)
@@ -58,15 +55,18 @@ class Counter(object):
             self.actor      = [CounterActor(self.aPars, self.aTrain) for i in range(len(self.agents))]
 
         for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
-            target_param.data.copy_(param)
+            target_param.data.copy_(param.data)
 
         self.clip_grad_norm = self.aTrain['clip']
         self.trainMode      = self.vPars['trainMode']
         self.batch_size     = self.vTrain['batch']
         self.discount       = self.vTrain['gamma']
-        self.td_lambda      = .8
-        self.tau            = .005
+        self.temp_second    = None 
+        self.temp_first     = None
+        self.td_lambda      = 0 # TEST: this is because we are doing ER off-policy
+        self.tau            = .01
         self.stop           = False
+        self.trained        = False
 
         self.exp            = Memory()
 
@@ -98,8 +98,12 @@ class Counter(object):
             a1 = self.choose(policy1)
             policy2 = self.actor[1](torch.FloatTensor(s_split[1]))
             a2 = self.choose(policy2)
-        action = [self.actionMap[a1], self.actionMap[a2]]
-        return np.array(action), [a1, a2]
+        # THIS IS A TEST
+        a1 = 0
+        #print(policy1)
+        #print(policy2)
+        #print('')
+        return [a1, a2]
 
     def choose(self, policies):
         m = Categorical(policies)
@@ -111,12 +115,17 @@ class Counter(object):
     def saveModel(self):
         pass
 
-    def store(self, s, a, r, sprime, aprime, done, s_w):
-        self.exp.push(s, a, r, 1 - done, aprime, sprime, s_w)
+    def store(self, s, a, r, sprime, aprime, done, local, next_local):
+        self.exp.push(s, a, r, 1 - done, aprime, sprime, local, next_local, None)
 
     def reset(self):
-        time.sleep(3)
         self.train(True)
+        if self.trained:
+            self.actor.eps = max(.05, self.actor.eps - .003)
+        self.trained = False
+        self.temp_first, self.temp_second = (None, None)
+        self.h = [torch.zeros((1, 1, self.h_state_n)) for i in range(len(self.agents))]
+        self.prevAction     = [-1,-1]
         return 
 
     def zipStack(self, data):
@@ -124,43 +133,53 @@ class Counter(object):
         data        = [torch.stack(d).squeeze().to(device) for d in data]
         return data
 
+    def get_lambda_targets(self, rewards, mask, gamma, target_qs):
+        target_qs = target_qs.squeeze()
+        ret = target_qs.new_zeros(*target_qs.shape)
+        ret[-1] = rewards[-1] + target_qs[-1] * mask[-1]
+
+
+        for t in range(ret.size()[0] - 2, -1,  -1):
+            ret[t] = mask[t] * (self.td_lambda * gamma * ret[t + 1]) + (rewards[t] + (1 - self.td_lambda) * gamma * target_qs[t] * mask[t])
+        return ret.unsqueeze(1)
+
     def train(self, episode_done = False):
         if len(self.exp) > self.batch_size:
             transition = self.exp.sample(self.batch_size)
             states = torch.squeeze(torch.Tensor(transition.state)).to(device)
             states_next = torch.squeeze(torch.Tensor(transition.next_state)).to(device) 
             actions = torch.Tensor(transition.action).float().to(device)
-            actions_next = torch.Tensor(transition.next_action).float().to(device) 
             rewards = torch.Tensor(transition.reward).to(device)
             masks = torch.Tensor(transition.mask).to(device)
             local = self.zipStack(transition.local)
+            next_local = self.zipStack(transition.next_local)
 
             actions_next = []
-            policies = []
-            for s in local:
-                policy = self.actor(s)
-                policies.append(policy)
-                a = self.choose(policy)
-                actions_next.append(torch.FloatTensor(a))
+            for s in next_local:
+                next_policy = self.actor(s)
+                next_action = self.choose(next_policy)
+                actions_next.append(torch.Tensor(next_action))
 
-            # Critic Update
-            ID = torch.Tensor(states.size()[0], 1).fill_(0)
+            '''# Critic Update
+            ID = torch.Tensor(states.size()[0], 1).fill_(-1)
             inp = torch.cat((states_next, actions_next[1].unsqueeze(1), ID), dim = 1)
             q_tar = self.target(inp).detach().gather(1, actions_next[0].long().unsqueeze(1))
-            q_tar = rewards.unsqueeze(1) + self.discount * masks.unsqueeze(1) * q_tar
-            inp = torch.cat((states, actions[:, 1:], ID), dim = 1)
-            q = self.critic(inp).gather(1, actions[:, 0].long().unsqueeze(1))
+            q_tar = self.get_lambda_targets(rewards.squeeze(), masks.squeeze(), self.discount, q_tar)
+            inp = torch.cat((states, actions[:, 1].unsqueeze(1), ID), dim = 1)
+            q = self.critic(inp)
+            q = q.gather(1, actions[:, 0].long().unsqueeze(1))
             loss = self.critic.get_loss(q, q_tar)
             self.critic.optimizer.zero_grad()
             loss.backward()
-            self.critic.optimizer.step()
+            self.critic.optimizer.step()'''
 
             ID = torch.Tensor(states.size()[0], 1).fill_(1)
             inp = torch.cat((states_next, actions_next[0].unsqueeze(1), ID), dim = 1)
             q_tar = self.target(inp).detach().gather(1, actions_next[1].long().unsqueeze(1))
-            q_tar = rewards.unsqueeze(1) + self.discount * masks.unsqueeze(1) * q_tar
-            inp = torch.cat((states, actions[:, :1], ID), dim = 1)
-            q = self.critic(inp).gather(1, actions[:, 1].long().unsqueeze(1))
+            q_tar = self.get_lambda_targets(rewards.squeeze(), masks.squeeze(), self.discount, q_tar)
+            inp = torch.cat((states, actions[:, 0].unsqueeze(1), ID), dim = 1)
+            q = self.critic(inp)
+            q = q.gather(1, actions[:, 1].long().unsqueeze(1))
             loss = self.critic.get_loss(q, q_tar)
             self.critic.optimizer.zero_grad()
             loss.backward()
@@ -168,37 +187,36 @@ class Counter(object):
 
             
             actor_loss = 0
-            # Actor Update 
+            # Actor Update. Consider doing new_actions
+            policies = []
+            new_actions = []
+            for s in local:
+                policy = self.actor(s)
+                policies.append(policy)
+                new_action = self.choose(policy)
+                new_actions.append(torch.Tensor(new_action))
 
-            ID = torch.Tensor(states.size()[0], 1).fill_(0)
-            inp = torch.cat((states, actions[:, 1:], ID), dim = 1)
+            '''ID = torch.Tensor(states.size()[0], 1).fill_(-1)
+            inp = torch.cat((states, new_actions[1].unsqueeze(1), ID), dim = 1)
             q_out = self.critic(inp) #batch x num_actions
             policy = policies[0] #batch x num_actions
-            policy = torch.transpose(policy, 0, 1) #transpose
-            mat = torch.mm(q_out, policy)
-            baseline = torch.diagonal(mat, 0).detach() #diagonal elements are your baselines! 
-            #gather the proper q_out elements
-            q_taken = q_out.gather(1, actions[:, 0].long().unsqueeze(1))
+            mult = q_out * policy
+            baseline = torch.sum(mult, 1).unsqueeze(1)
+            q_taken = q_out.gather(1, new_actions[0].long().unsqueeze(1))
             coma = (q_taken - baseline).detach()
-            policy = torch.transpose(policy, 0, 1) #tranpose back
-            probs_taken = policy.gather(1, actions[:, 0].long().unsqueeze(1))
-            probs_taken[masks == 0] = 1.0
-            loss = -(torch.log(probs_taken) * coma * masks).sum() / masks.sum()
-            actor_loss += loss 
+            probs_taken = policy.gather(1, new_actions[0].long().unsqueeze(1))
+            loss = -(torch.log(probs_taken) * coma).mean()
+            actor_loss += loss '''
 
             ID = torch.Tensor(states.size()[0], 1).fill_(1)
-            inp = torch.cat((states, actions[:, :1], ID), dim = 1)
+            inp = torch.cat((states, new_actions[0].unsqueeze(1), ID), dim = 1)
             q_out = self.critic(inp) #batch x num_actions
             policy = policies[1] #batch x num_actions
-            policy = torch.transpose(policy, 0, 1) #transpose
-            mat = torch.mm(q_out, policy)
-            baseline = torch.diagonal(mat, 0).detach() #diagonal elements are your baselines! 
-            #gather the proper q_out elements
-            q_taken = q_out.gather(1, actions[:, 1].long().unsqueeze(1))
+            mult = q_out * policy
+            baseline = torch.sum(mult, 1).unsqueeze(1)
+            q_taken = q_out.gather(1, new_actions[1].long().unsqueeze(1))
             coma = (q_taken - baseline).detach()
-            policy = torch.transpose(policy, 0, 1) #tranpose back
-            probs_taken = policy.gather(1, actions[:, 1].long().unsqueeze(1))
-            probs_taken[masks == 0] = 1.0
+            probs_taken = policy.gather(1, new_actions[1].long().unsqueeze(1))
             loss = -(torch.log(probs_taken) * coma).mean()
             actor_loss += loss 
 
@@ -208,6 +226,7 @@ class Counter(object):
             if self.homogenous:
                 self.actor.optimizer.zero_grad()
                 actor_loss.backward()
+                nn.utils.clip_grad_norm_(self.actor.parameters(), 1)
                 self.actor.optimizer.step()
             else:
                 for actor in self.actor:
@@ -217,10 +236,13 @@ class Counter(object):
                     actor.optimizer.step()    
 
             self.totalSteps += 1
+            # self.exp = Memory()
+            self.trained = True
 
             #UPDATE TARGET NETWORK:
-            for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
-                target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
+            if self.totalSteps % 1 == 0: # THIS IS A TEST
+                for target_param, param in zip(self.target.parameters(), self.critic.parameters()):
+                    target_param.data.copy_((1 - self.tau) * target_param + self.tau*param.data)
 
             return 
 
@@ -233,10 +255,12 @@ class CounterActor(nn.Module):
         self.lr         = train['lr']
         self.mean       = params['mu']
         self.std        = params['std']
+        self.eps        = .5
 
         self.fc1        = nn.Linear(self.x_state_n, self.h_state_n)
-        self.fc2        = nn.Linear(self.h_state_n, self.h_state_n)
-        self.fc3        = nn.Linear(self.h_state_n, self.u_n)
+        self.gru        = nn.GRU(self.h_state_n, self.h_state_n)
+        self.hidden     = nn.Linear(self.h_state_n, self.h_state_n)
+        self.fc2        = nn.Linear(self.h_state_n, self.u_n)
         self.soft       = nn.Softmax(dim = 1)
         self.optimizer  = optim.Adam(super(CounterActor, self).parameters(), lr=self.lr)
 
@@ -244,11 +268,13 @@ class CounterActor(nn.Module):
         return (inputs - self.mean) / self.std
 
     def forward(self, x):
+        # x = torch.cat((x, torch.Tensor([ID]).view((1,1)), torch.Tensor(prev_a).unsqueeze(0)), dim=1)
         x = self.preprocess(x)
-        inp = F.leaky_relu(self.fc1(x))
-        out = F.leaky_relu(self.fc2(inp))
-        out = self.fc3(out)
+        x = F.leaky_relu(self.fc1(x))
+        x = F.leaky_relu(self.hidden(x))
+        out = self.fc2(x)
         policy = self.soft(out)
+        policy = (1 - self.eps) * policy + self.eps / self.u_n
         return policy
     
 
