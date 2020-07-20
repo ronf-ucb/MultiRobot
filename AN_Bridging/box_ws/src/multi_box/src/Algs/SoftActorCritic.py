@@ -14,7 +14,7 @@ import torch.optim as optim
 from Networks.network import Network
 from Networks.softNetwork import SoftNetwork
 from agent import Agent
-from Buffers.replaybuffer import ReplayBuffer
+from Buffers.CounterFactualBuffer import Memory 
 
 cuda_avail = torch.cuda.is_available()
 device = torch.device("cuda" if cuda_avail else "cpu")

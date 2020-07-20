@@ -8,12 +8,15 @@ import numpy as np
 Transition = namedtuple('Transition',('state','action', 'reward','mask', 'next_action', 'next_state', 'local', 'next_local', 'policies'))
 
 class Memory(object):
-    def __init__(self):
+    def __init__(self, size = 10000):
         self.memory = []
         self.position = 0
+        self.size = size
 
     def push(self, state, action, reward, mask, next_action, next_state, local=None, next_local=None, policies=None):
         """Saves a transition."""
+        if len(self.memory) >= self.size:
+            self.memory.pop(0)
         self.memory.append(Transition(state, action, reward, mask, next_action, next_state, local, next_local, policies))
 
     def sample(self, batch = 0):

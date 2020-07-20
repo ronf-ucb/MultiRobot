@@ -175,7 +175,7 @@ class Counter(object):
 
             ID = torch.Tensor(states.size()[0], 1).fill_(1)
             inp = torch.cat((states_next, actions_next[0].unsqueeze(1), ID), dim = 1)
-            q_tar = self.target(inp).detach().gather(1, actions_next[1].long().unsqueeze(1))
+            q_tar = self.target(inp).detach().gather(1, actions_next[1].long().unsqueeze(1)) # .max(1)? 
             q_tar = self.get_lambda_targets(rewards.squeeze(), masks.squeeze(), self.discount, q_tar)
             inp = torch.cat((states, actions[:, 0].unsqueeze(1), ID), dim = 1)
             q = self.critic(inp)

@@ -62,7 +62,7 @@ class BoxDoubleTask(BoxTask):
 
         if self.phase == 1:
             if first.pos[2] < .35 or second.pos[2] < .35:
-                return (-8, 1)
+                return (-3, 1)
             if blockPos[-1] < .3:
                 self.phase += 1
                 return (5, 0)

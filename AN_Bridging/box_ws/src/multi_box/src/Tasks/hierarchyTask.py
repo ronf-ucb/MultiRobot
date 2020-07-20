@@ -8,24 +8,51 @@ import rospy
 import torch 
 import torch.nn as nn
 import vrep
+import time
 from std_msgs.msg import String, Int8
 from geometry_msgs.msg import Vector3
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt  
+import sys  
 
 class HierarchyTask(Task):
     def __init__(self):
         super(HierarchyTask, self).__init__()
         self.prev = {"S": None, "A": None}
-        self.actionMap = {0: "MOVE_TOWARDS", 1: "ANGLE_TOWARDS", 2:"MOVE_AWAY", 3: "FORWARD", 4: "CIRCLE_C", 5: "CIRCLE_CC", 6: "ANGLE_SAME"} 
-        self.travel_gain = 1
-        self.circle_gain = 3
-        self.rotate_gain = 10
-        self.s_n = 12
+        self.primitive = 'PUSH_TOWARDS'
+        if self.primitive == 'PUSH_IN_HOLE' or self.primitive == 'PUSH_TOWARDS':
+            self.actionMap = {0: "APPROACH", 1: "ANGLE_TOWARDS", 2:"MOVE_BACK", 3: "ALIGN_Y", 4: "PUSH_IN"} 
+        elif self.primitive == 'CROSS':
+            self.actionMap = {0: "ANGLE_TOWARDS", 1: "MOVE_BACK", 2: "ALIGN_Y", 3: "CROSS"} #push in represents cross 
+        elif self.primitive == 'REORIENT':
+            self.actionMap = {0: 'MOVE_BACK', 1: 'PUSH_LEFT', 2: 'PUSH_RIGHT', 3: 'ALIGN_Y', 4: 'ANGLE_TOWARDS'}
+        self.fail = rospy.Publisher("/restart", Int8, queue_size = 1)
+
+        self.travel_gain = 2.5  
+        self.align_gain = 8
+        self.rotate_gain = 3
+        self.x_contact = 0
+        self.contact = {'left': .6, 'right': -.6}
+        self.s_n = 7
         self.currReward = 0
         self.rewards = []
-        self.phase = 1
+
+        self.curr_rollout = []
+        self.data = []
+
         self.counter = 0
-        self.period = 50
+        self.period = 20 # TEST 20  
+        self.mode = None#'GET_STATE_DATA' 
+        # TEST:
+        self.commands = [3, 3, 1, 1, 1, 0, 0, 0, 4, 4, 4, 4, 4, 4]
+    
+    def resetPrimitive(self, primitive):
+        self.primitive = primitive 
+        if self.primitive == 'PUSH_IN_HOLE' or self.primitive == 'PUSH_TOWARDS':
+            self.actionMap = {0: "APPROACH", 1: "ANGLE_TOWARDS", 2:"MOVE_BACK", 3: "ALIGN_Y", 4: "PUSH_IN"} 
+        elif self.primitive == 'CROSS':
+            self.actionMap = {0: "ANGLE_TOWARDS", 1: "MOVE_BACK", 2: "ALIGN_Y", 3: "CROSS"} #push in represents cross 
+        elif self.primitive == 'REORIENT':
+            self.actionMap = {0: 'MOVE_BACK', 1: 'PUSH_LEFT', 2: 'PUSH_RIGHT', 3: 'ALIGN_Y', 4: 'ANGLE_TOWARDS'}
 
     def extractInfo(self):
         self.vTrain = self.agent.vTrain
@@ -36,9 +63,12 @@ class HierarchyTask(Task):
  
     def sendAction(self, s, changeAction=True):
         msg = Vector3()
+        self.counter -= 1
         if changeAction:
-            ret = self.agent.get_action(s)
-            self.radius = np.linalg.norm(self.goal)
+            s_input = self.getNetInput(s)
+            ret = self.agent.get_action(s_input)
+            # TEST:
+            # ret = self.commands.pop(0)
             print(self.actionMap[ret])
         else:
             ret = self.prev['A']
@@ -49,166 +79,249 @@ class HierarchyTask(Task):
     
     def getPrimitive(self, s, a):
         # given state, action description and goal, return action representing left/right frequencies
-        theta, phi, alpha = self.getAngles(s)
-        diff_r = (np.linalg.norm(self.goal) - self.radius)/self.radius
-        if a == "MOVE_TOWARDS":
-            action = [math.pow(self.travel_gain * phi, 3), math.pow(self.travel_gain * theta, 3)]
+        s = np.array(s).ravel()
+        goal_angles, align_y_angles, cross_angles, left_angle, right_angle = self.getAngles(s)
+        theta, phi = goal_angles
+        alpha, beta, from_align = align_y_angles
+        goal1, goal2 = cross_angles
+
+        s = s.ravel()
+        #diff_r = (np.linalg.norm(self.goal[:2] - s[:2]) - self.radius)
+        if a == "APPROACH": 
+            #action = [self.travel_gain * phi + (s[1] - self.y_box), self.travel_gain * theta + (self.y_box - s[1])]
+            action = [self.travel_gain * phi, self.travel_gain * theta]
         if a == "ANGLE_TOWARDS":
             action = [self.rotate_gain * np.cos(theta), -self.rotate_gain * np.cos(theta)]
-        if a == "MOVE_AWAY":
-            action = [-math.pow(self.travel_gain*theta, 3), -math.pow(self.travel_gain * phi, 3)]
-        if a == "FORWARD":
-            action = [4, 4]
-        if a == "CIRCLE_C":
-            action = [self.circle_gain*(1 + diff_r - np.sin(theta)), self.circle_gain*(1 - diff_r + np.sin(theta))]
-        if a == "CIRCLE_CC":
-            action = [self.circle_gain*(1 - diff_r + np.sin(phi)), self.circle_gain*(1 + diff_r - np.sin(phi))]
-        if a == "ANGLE_SAME":
-            action = [self.rotate_gain * np.cos(alpha), -self.rotate_gain * np.cos(alpha)]
+        if a == "MOVE_BACK":
+            #action = [-self.travel_gain*theta, -self.travel_gain * phi]    
+            action = [-self.travel_gain / 2, -self.travel_gain / 2]
+        if a == "ALIGN_Y":
+            action = [self.align_gain * beta * from_align, self.align_gain * alpha  * from_align]
+        if a == "PUSH_IN" or a == "CROSS":
+            action = [self.travel_gain * goal2, self.travel_gain * goal1]
+        if a == 'PUSH_LEFT':
+            action = [self.travel_gain * left_angle[1], self.travel_gain * left_angle[0]]
+        if a == 'PUSH_RIGHT':
+            action = [self.travel_gain * right_angle[1], self.travel_gain * right_angle[0]]    
         return action
     
     def getAngles(self, s):
         s = s.ravel()
-        goal = self.goal.ravel()[:2] - s[:2] #relative position of goal
-        ori = s[5]
-        front_v = vector(ori)
-        right_v = vector(ori - np.pi/2)
+        goal = self.goal # This is relative position of box w.r.t. the robot
 
-        relative_x = dot(unitVector(goal), right_v)
-        relative_y = dot(unitVector(goal), front_v)
-
+        if self.primitive == 'PUSH_IN_HOLE' or self.primitive == 'REORIENT' or self.primitive == 'PUSH_TOWARDS':
+            relative_y = goal[0]
+            relative_x = -goal[1]
+        if self.primitive == 'CROSS':
+            relative_y = s[4]
+            relative_x = -s[5]
         buff = (-np.pi if relative_y < 0 else np.pi) if relative_x < 0 else 0 # since we want to map -pi to pi
         theta = np.arctan(relative_y/relative_x) + buff 
+        phi = -np.pi - theta if theta < 0 else np.pi - theta  
+        goal_angles = (theta, phi)
 
-        phi = -np.pi - theta if theta < 0 else np.pi - theta 
-
-        relative_x = dot(vector(s[11]), right_v)
-        relative_y = dot(vector(s[11]), front_v)
+        # NOTE: Depending on the primitive, these all reference the box and some otherpoint past it as well 
+        box_from_hole = s[:2] - s[4:6]
+        hole = s[4:6]
+        aligned = hole - dot(hole,unitVector(box_from_hole)) * unitVector(box_from_hole)
+        relative_x = -aligned[1]
+        relative_y = aligned[0]
         buff = (-np.pi if relative_y < 0 else np.pi) if relative_x < 0 else 0 # since we want to map -pi to pi
         alpha = np.arctan(relative_y/relative_x) + buff 
+        beta = -np.pi - alpha if alpha < 0 else np.pi - alpha 
+        align_y_angles = (alpha, beta, dist(aligned, np.zeros(2)))
 
-        return theta, phi, alpha
+        relative_y = s[4]
+        relative_x = -s[5]
+        buff = (-np.pi if relative_y < 0 else np.pi) if relative_x < 0 else 0 # since we want to map -pi to pi
+        goal1 = np.arctan(relative_y/relative_x) + buff 
+        goal2 = -np.pi - goal1 if goal1 < 0 else np.pi - goal1
+        cross_angles = (goal1, goal2)
 
-    def checkConditions(self, s):
+        pos = s[:2]
+        psi = s[3]
+        goal_relative_to_box = np.array([self.x_contact, self.contact['left']])
+        rotation_matrix = np.array([[np.cos(psi), -np.sin(psi)], [np.sin(psi), np.cos(psi)]])
+        home = pos + rotation_matrix.dot(goal_relative_to_box)
+        relative_y = home[0]
+        relative_x = -home[1]
+        buff = (-np.pi if relative_y < 0 else np.pi) if relative_x < 0 else 0 # since we want to map -pi to pi
+        alpha = np.arctan(relative_y/relative_x) + buff 
+        beta = -np.pi - alpha if alpha < 0 else np.pi - alpha 
+        left_angle = (alpha, beta)
+
+        goal_relative_to_box = np.array([self.x_contact, self.contact['right']])
+        home = pos + rotation_matrix.dot(goal_relative_to_box)
+        relative_y = home[0]
+        relative_x = -home[1]
+        buff = (-np.pi if relative_y < 0 else np.pi) if relative_x < 0 else 0 # since we want to map -pi to pi
+        alpha = np.arctan(relative_y/relative_x) + buff 
+        beta = -np.pi - alpha if alpha < 0 else np.pi - alpha 
+        right_angle = (alpha, beta)
+
+        return goal_angles, align_y_angles, cross_angles, left_angle, right_angle
+
+    def checkConditions(self, full_state, a, complete = True):
         # given self.prev['A'] and state (unraveled already), check that we've sufficiently executed primitive
-        if self.prev['A'] == None:
+        if a == None:
             return True
-        a = self.actionMap[self.prev['A']]
-        s = np.array(s)
-        theta, phi, _ = self.getAngles(s)
-        self.counter -= 1
-        #if a == "ANGLE_TOWARDS":
-        #   return abs(theta - np.pi/2) < 2e-1
+        a = self.actionMap[a]
+        s = np.array(full_state).ravel()
+        goal_angles, align_y_angles, cross_angles, left_angle, right_angle = self.getAngles(s)
+        theta, phi = goal_angles
+        alpha, beta, to_align = align_y_angles
+        goal1, goal2 = cross_angles
+
+        if a == "ANGLE_TOWARDS":
+            return abs(theta - np.pi/2) < 5e-2 or self.counter == 0
+        if a == "ALIGN_Y":
+            return to_align < .1 or self.counter == 0
+        if a == "APPROACH":
+            return dist(s[:2], np.zeros(2)) < .7 or self.counter == 0
+        if a == 'PUSH_IN':
+            if self.primitive == 'PUSH_IN_HOLE':
+                return self.box_height < .35 or self.counter == 0
+            else:
+                return self.counter == 0
+
         return self.counter == 0
 
-    def checkPhase(self, pos, blockPos, ori, blockOri, phase):
-        if pos[-1] < .35:
-            return (-3, 1)
-        if phase == 1:
-            if blockPos[2] < .3 and abs(blockPos[1]) < 1.2 and blockPos[0] > -.5:
-                return (5, 0)
-        if phase == 2:
-            if pos[0] > .4:
+    def checkPhase(self, s):
+        if self.primitive == 'PUSH_IN_HOLE' or self.primitive == 'CROSS':
+            if self.rob_height < .35:
+                return (-3, 1)
+        if self.primitive == 'PUSH_IN_HOLE':
+            if (self.box_height < .2):
+                d = dist(s[:2], s[4:6])
+                print('DISTANCE: ', d)
+                if d < .2:
+                    return (10 - d * 5, 1) # NOTE: we are training just the first phase (get box into hole)
+                else:
+                    return (-3, 1)
+        if self.primitive == 'CROSS':
+            goal = s[4:6]
+            d = dist(goal, np.zeros(2))
+            if d < .2:
+                print('distance: ', d)
+                return (5, 1)
+        if self.primitive == 'REORIENT':
+            box_to_goal = s[4:6] - s[:2]
+            goal_vector = unitVector(box_to_goal)
+            goal_direction = math.atan(goal_vector[1]/goal_vector[0])
+            curr_direction = s[3]
+
+            if abs(self.box_y) > .1:
+                return (-3, 1)
+            if abs(goal_direction - curr_direction) < .15:
+                return (5 - 20*abs(self.box_y), 1)
+        if self.primitive == 'PUSH_TOWARDS':
+            d = dist(s[:2], s[4:6])
+            box_to_goal = s[4:6] - s[:2]
+            goal_vector = unitVector(box_to_goal)
+            goal_direction = math.atan(goal_vector[1]/goal_vector[0])
+            curr_direction = s[3]
+            if abs(self.box_ori) > .25 or abs(self.box_y) > .35:
+                return (-2, 1)
+            if d < .2:
                 return (5, 1)
         return (0,0)
     
-    def getAux(self, pos, prevPos, blockPos, prevBlock, ori, prevOri, phase, blockOri):
-        if phase == 1:
-            dist_r = (dist(prevPos, blockPos) - dist(pos, blockPos))
-
-            block_r = blockPos[0] - prevBlock[0]
-            prevVec = unitVector(vector(prevOri))
-            vec = unitVector(vector(ori))
-            goal = unitVector(blockPos[:2]-pos[:2])
-
-            prevDot = dot(prevVec, goal)
-            currDot = dot(vec, goal)
-            ori_r = currDot - prevDot
-            # ori_r = abs(prevOri - blockOri) - abs(ori - blockOri)
-            # ori_r -= abs(blockOri)
-
-            return ((2*block_r + dist_r + 2*ori_r - .1), 0)
-
-        if phase == 2:
-            goal = np.array([.40, blockPos[1], pos[2]])
-            delta = dist(pos, goal)
-            prevDelta = dist(prevPos, goal)
-            dist_r = prevDelta - delta
-            y_r = -abs(blockPos[1]-pos[1])
-
-            return ((dist_r  + .15*y_r - .05 * abs(ori) - .1), 0)
-
-    def unpack(self, prevS, s, double = False):
-        if double:
-            prevPos = np.array(prevS[:3])
-            pos = np.array(s[:3])
-            blockPos = np.array(s[4:7])
-            prevBlock = np.array(prevS[4:7])
-            ori = s[3]
-            prevOri = prevS[3]
-            blockOri = s[7]
-        else:
-            prevPos = np.array(prevS[:3])
-            pos = np.array(s[:3])
-            blockPos = np.array(s[6:9])
-            prevBlock = np.array(prevS[6:9])
-            ori = s[5]
-            prevOri = prevS[5]
-            blockOri = s[11]
-        return prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri
+    def getNetInput(self, s):
+        s = s.reshape(1, -1)
+        if self.primitive == 'PUSH_TOWARDS':
+            return s[:, :-1]
+        return s
 
     def rewardFunction(self, s, a):
         s = s.ravel()
         prevS = self.prev["S"].ravel()
-        prevPos, pos, blockPos, prevBlock, ori, prevOri, blockOri = self.unpack(prevS, s)
-        res = self.checkPhase(pos, blockPos, ori, blockOri, self.phase)
+        res = self.checkPhase(s)
         if res[0] != 0:
             return res
-        return self.getAux(pos, prevPos, blockPos, prevBlock, ori, prevOri, self.phase, blockOri)
+        # make the penalty larger...
+        return (-.1, 0)
+
+    def isValidAction(self, s, a):
+        return not self.checkConditions(s.ravel(), a)
+    
+    def feature_2_task_state(self, feature):
+        return np.hstack((feature[:2], feature[3:7], feature[8:])) 
+    
+    def append_states(self):
+        self.data.extend(self.curr_rollout)
+
+    def data_to_txt(self, path):
+        np.savetxt(path, np.array(self.data))
+        return 
 
     def receiveState(self, msg):    
         floats = vrep.simxUnpackFloats(msg.data)
-        self.goal = np.array(floats[6:9]) # THIS IS A TEST
-        fail = floats[-1]
+        local_state = np.array(floats).ravel()
+        feature = local_state[:9]
+        local_state = self.feature_2_task_state(local_state)
+        self.goal = local_state[:2] # goal is position of box relative to robot 
         restart = 0
-        floats = floats[:self.s_n]
+        self.box_height = local_state[self.s_n]
+        self.rob_height = local_state[self.s_n + 1]
+        self.box_y = local_state[self.s_n + 2]
+        self.box_ori = local_state[self.s_n + 3]
+        local_state = local_state[:self.s_n]
 
-        changeAction = self.checkConditions(floats)
-        s = (np.array(floats)).reshape(1,-1)
+        changeAction = self.checkConditions(local_state, self.prev['A'], complete=False)
+        s = (np.array(local_state)).reshape(1,-1)
+        curr_s = self.getNetInput(s)
         if changeAction:
             self.counter = self.period
             a = (self.sendAction(s))
-            if type(self.prev["S"]) == np.ndarray:
+            if self.mode == 'GET_STATE_DATA' and self.isValidAction(s, a):
+                self.curr_rollout.append(feature)
+            if type(self.prev["S"]) == np.ndarray and type(self.prev["A"]) == int:
                 r, restart = self.rewardFunction(s, self.prev["A"])
-                if r == 5:
-                    print(" #### Phase ", self.phase, "  Complete!")
-                    self.phase += 1
-                self.agent.store(self.prev['S'], self.prev["A"], np.array([r]).reshape(1, -1), s, a, restart)
+                r = r if self.isValidAction(self.prev['S'], self.prev['A']) or restart else -.1 # make the penalty larger
+                if restart: 
+                    if r > 0:
+                        print(' #### Success!')
+                    else:
+                        print(' #### Failed')
+                    
+                prev_s = self.getNetInput(self.prev['S'])
+                self.agent.store(prev_s, self.prev["A"], np.array([r]).reshape(1, -1), curr_s, a, restart)
+                if restart: 
+                    print('Last transition recorded')
                 self.currReward += r
 
             if self.trainMode:
                 loss = self.agent.train()
 
             self.prev["S"] = s
-            self.prev["A"] = a
+            self.prev["A"] = int(a)
+            l = len(self.agent.exp)
+            if l <= 500:
+                print('exp length', l)
         else:
             a = self.sendAction(s, changeAction)
             # SPECIAL CASE: since we execute one primitive for multiple time steps (with intermittent control updates), we need to store transitions/rewards when the agent fails out or succeeds
-            if type(self.prev["S"]) == np.ndarray:
+            if type(self.prev["S"]) == np.ndarray and type(self.prev["A"]) == int:
                 r, restart = self.rewardFunction(s, self.prev["A"])
                 if restart:
                     if r > 0: # we assume failure has rewards < 0
                         print(' #### Success!')
                     else:
                         print(' #### Dropped')
-                    self.agent.store(self.prev['S'], self.prev["A"], np.array([r]).reshape(1, -1), s, a, restart)
+                    prev_s = self.getNetInput(self.prev['S'])
+                    self.agent.store(prev_s, self.prev["A"], np.array([r]).reshape(1, -1), curr_s, a, restart)
+                    print('Last transition recorded')
                     self.currReward += r
-        self.restartProtocol(restart or fail)
-
+        if self.mode == 'GET_STATE_DATA' and restart and r > 0:
+            self.append_states()
+            print(' LENGTH OF DATA: ', len(self.data))
+            if len(self.data) > 1000:
+                self.agent.stop = True
+        self.restartProtocol(restart)   
         return 
     
     def restartProtocol(self, restart):
-        if restart == 1:
+        if restart == 1:      
             print('Results:     Cumulative Reward: ', self.currReward, '    Steps: ', self.agent.totalSteps)
             print("")
             for k in self.prev.keys():
@@ -217,16 +330,21 @@ class HierarchyTask(Task):
             if self.currReward != 0:
                 self.rewards.append(self.currReward)
             self.currReward = 0
-            self.phase = 1
+            self.curr_rollout = []
             self.agent.reset()
+            msg = Int8()
+            msg.data = 1
+            self.fail.publish(msg)
 
     ######### POST TRAINING #########
     def postTraining(self):
-        #valueOnly = True if self.a == "argmax" else False
-        self.plotRewards()
-        self.plotLoss(False, 'Loss Over Iterations w/ Moving Average', "Actor Loss over Iterations w/ Moving Average")
-        #self.agent.saveModel()
-    
+        if self.mode == 'GET_STATE_DATA':
+            self.data_to_txt(path =  '/home/austinnguyen517/Documents/Research/BML/MultiRobot/AN_Bridging/' +self.primitive + '_state_data.txt')
+            sys.exit(0)
+        else:
+            self.agent.saveModel()
+            self.plotRewards()
+
     def plotLoss(self, valueOnly = False, title1 = "Critic Loss over Iterations", title2 = "Actor Loss over Iterations"):
         x = range(len(self.agent.valueLoss))
         plt.plot(x, self.agent.valueLoss)
@@ -236,7 +354,7 @@ class HierarchyTask(Task):
         line = np.convolve(self.agent.valueLoss, window, 'same')
         plt.plot(x, line, 'r')
         grid = True
-        plt.show()
+        plt.show()  
         if not valueOnly:
             x = range(len(self.agent.actorLoss))
             window = np.ones(int(15))/float(15)
