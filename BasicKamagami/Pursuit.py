@@ -198,7 +198,7 @@ class Pursuit:
         self.publish()
 
 
-
+print('Start V-Rep simulation running first, before python')
 vrep.simxFinish(-1)  # clean up the previous stuff
 clientID = vrep.simxStart('127.0.0.1', 19999, True, True, 5000, 5)
 if clientID != -1:
